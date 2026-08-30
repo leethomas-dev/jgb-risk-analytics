@@ -216,3 +216,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific: generated charts/tables (regeneratable from code)
+outputs/*.png
+
+# Project-specific: machine-local write-through cache of the last good live JGB
+# curve pull (data/jgb_curve_loader.py). Rewritten on every successful pull;
+# never source. The .tmp glob catches an atomic-write temp file left by a crash.
+data/_jgb_curve_cache.json
+data/._jgb_cache_*.tmp
