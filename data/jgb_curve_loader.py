@@ -23,7 +23,7 @@ Curve sources, tried in order:
    anchoring to a separate print. This is the floor: reached only when the
    live pull fails AND no cache file exists (e.g. first run on a fresh
    machine with no network). It is a fixed past date, so it may be stale;
-   refresh it by committing a newer snapshot -- see phase_1_documentation.md
+   refresh it by committing a newer snapshot -- see docs/phase_1_documentation.md
    section 6.
 
 Output contract: load_jgb_curve() returns a pandas DataFrame with columns:
@@ -52,12 +52,12 @@ LIVE_REQUEST_TIMEOUT_SECONDS = 10
 
 # Local write-through cache: the most recent validated live curve. Sits next to
 # this module, is rewritten on every successful pull, and is gitignored (it is
-# machine-local state, not source). See phase_1_documentation.md sections 1.4 / 5.2.
+# machine-local state, not source). See docs/phase_1_documentation.md sections 1.4 / 5.2.
 CACHE_PATH = Path(__file__).with_name("_jgb_curve_cache.json")
 
 # Plausibility band for a JGB par yield expressed as a decimal. A curve with any
 # yield outside this range is treated as a parse/format failure, not as data --
-# the semantic check that phase_1_documentation.md section 4.4 flagged as missing.
+# the semantic check that docs/phase_1_documentation.md section 4.4 flagged as missing.
 # It gates both the live pull and anything read back from the cache.
 MIN_PLAUSIBLE_YIELD = -0.01  # -1%
 MAX_PLAUSIBLE_YIELD = 0.10  # +10%
@@ -315,7 +315,7 @@ def load_jgb_curve(prefer_live: bool = True, verbose: bool = True) -> pd.DataFra
         print(
             f"[jgb_curve_loader] Loaded SNAPSHOT curve: real MOF par curve for "
             f"{SNAPSHOT_DATE}, served unmodified ({why}). A fixed past date -- it "
-            "may be stale; see phase_1_documentation.md section 6.",
+            "may be stale; see docs/phase_1_documentation.md section 6.",
             file=sys.stderr,
         )
     return df
