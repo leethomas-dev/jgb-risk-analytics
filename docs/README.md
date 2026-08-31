@@ -10,7 +10,7 @@ model validator can review a decision without re-deriving it from the diff.
 | ----- | --- | -------- | ------ |
 | 1 | [`phase_1_documentation.md`](phase_1_documentation.md) | `data/jgb_curve_loader.py` — `load_jgb_curve()`, the par yield curve input for every downstream model | Done |
 | 2A | [`phase_2a_documentation.md`](phase_2a_documentation.md) | `config/portfolio.json` + `config/portfolio_loader.py` — `load_portfolio()`, the portfolio input for pricing/KRD | Done |
-| 2B | *(pending)* | `models/bond_pricing.py` — curve-based bond pricing | In progress |
+| 2B | [`phase_2b_documentation.md`](phase_2b_documentation.md) | `models/bond_pricing.py` — `price_bond()` / `price_portfolio()`, curve-based bond pricing | Done |
 
 The project-wide fallback re-anchoring policy (§6 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded
