@@ -1,0 +1,52 @@
+{
+  "portfolio_name": "standard_project_portfolio",
+  "meta": {
+    "disclaimer": "Coupon rates below are ILLUSTRATIVE, not real outstanding JGB issues. They were chosen to sit near current tenor yields (see data/jgb_curve_loader.py) so each bond prices near par under the loaded curve, which makes pricing-engine output easy to sanity-check by eye. Substituting real ISINs and their actual coupons would be a credibility upgrade for a later iteration; this belongs in the Phase 6 validation report's assumptions section. See config/portfolio_loader.py for the validation this file is checked against on load.",
+    "schema_notes": "Each bond below specifies maturity_years directly. A real-issue portfolio (a later phase) may instead give maturity_date (ISO YYYY-MM-DD) and let the loader derive remaining years as of a valuation date, and may add isin / issue_date / tenor_class -- all optional, all absent here. See the SCHEMA FORWARD-COMPATIBILITY note in config/portfolio_loader.py.",
+    "last_updated": "2026-08-31"
+  },
+  "bonds": [
+    {
+      "name": "JGB_2Y",
+      "maturity_years": 2,
+      "coupon_rate": 0.010,
+      "face_value": 100,
+      "weight": 0.15
+    },
+    {
+      "name": "JGB_5Y",
+      "maturity_years": 5,
+      "coupon_rate": 0.015,
+      "face_value": 100,
+      "weight": 0.20
+    },
+    {
+      "name": "JGB_10Y",
+      "maturity_years": 10,
+      "coupon_rate": 0.020,
+      "face_value": 100,
+      "weight": 0.25
+    },
+    {
+      "name": "JGB_20Y",
+      "maturity_years": 20,
+      "coupon_rate": 0.030,
+      "face_value": 100,
+      "weight": 0.15
+    },
+    {
+      "name": "JGB_30Y",
+      "maturity_years": 30,
+      "coupon_rate": 0.035,
+      "face_value": 100,
+      "weight": 0.15
+    },
+    {
+      "name": "JGB_40Y",
+      "maturity_years": 40,
+      "coupon_rate": 0.038,
+      "face_value": 100,
+      "weight": 0.10
+    }
+  ]
+}
