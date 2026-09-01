@@ -1,5 +1,23 @@
 # Phase 2B Documentation — `models/bond_pricing.py`
 
+## In plain English
+
+A bond is essentially a loan: you hand over money today, and in exchange
+you receive a series of interest payments over time, plus your original
+money back at the end. This part figures out what that whole series of
+future payments is actually worth in today's money, using the current
+interest rates from Phase 1. The core idea is simple: a payment arriving
+further in the future is worth less today than the same-sized payment
+arriving sooner — money now is more useful than the same amount of money
+later. This part calculates exactly how much less, for every single
+payment a bond will make over its life, then adds all of those
+today's-money values together to arrive at a fair price for the bond as a
+whole.
+
+---
+
+## Technical details
+
 Curve-based bond pricing: values a bond as the sum of its cash flows, each
 discounted at the JGB curve yield interpolated to *that cash flow's own*
 maturity — not one flat yield applied to the whole bond. Reads the

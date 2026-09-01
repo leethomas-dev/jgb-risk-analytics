@@ -1,5 +1,22 @@
 # Phase 2A Documentation — `config/portfolio.json` + `config/portfolio_loader.py`
 
+## In plain English
+
+This part defines the group of bonds being studied in this project: six
+example Japanese government bonds with different repayment lengths (2, 5,
+10, 20, 30, and 40 years), different interest rates, and different-sized
+shares of the overall holding. These are realistic, made-up examples for
+demonstrating the tools in this project — not a real investor's actual
+holdings, and the documentation says so plainly wherever this data shows
+up. Every calculation elsewhere in the project reads this same list of
+bonds, rather than each part inventing its own — so there is exactly one
+place to change which bonds are being studied, and every result in the
+project stays consistent with it automatically.
+
+---
+
+## Technical details
+
 Single source of truth for the project's bond portfolio. Every downstream
 phase (pricing in `/models`, Key Rate Duration / DV01 / the ultra-long
 duration profile in Phase 3, the Phase 8 Streamlit dashboard) reads the

@@ -1,5 +1,23 @@
 # Phase 1 Documentation — `data/jgb_curve_loader.py`
 
+## In plain English
+
+This part of the project answers one question: "what are Japanese
+government bonds currently paying in interest, across different loan
+lengths — from one month up to 40 years?" It automatically checks the
+Japanese government's own official website for the latest numbers. If
+that check fails (no internet connection, the website is down), it falls
+back to the last successful check it saved earlier on this computer. If
+even that isn't available — for example, on a brand-new computer that has
+never connected before — it falls back to a real set of interest rates
+saved directly inside the program, from one specific past date. Whichever
+of these three it ends up using, it always says so out loud, so nobody
+looking at the numbers is left guessing how current they are.
+
+---
+
+## Technical details
+
 JGB par yield curve loader. This is the only input path for every downstream model
 (`/models`: pricing, key rate duration, PCA, scenario/VaR) and for the SR 11-7
 validation work in `/validation`. Downstream code never fetches or hard-codes a

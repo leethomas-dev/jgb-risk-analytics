@@ -1,5 +1,25 @@
 # Phase 3A Documentation — `models/key_rate_duration.py`
 
+## In plain English
+
+"How much does this bond's price move when interest rates change?" is one
+of the most basic risk questions in this project, and the usual answer is
+a single number (called "duration"). But interest rates for short loans
+(2-year money) don't always move by the same amount, or even in the same
+direction, as rates for long loans (30-year money) — they can move fairly
+independently of each other. This part breaks that single risk number
+down by loan length, answering a sharper question: "exactly how much of
+this bond's — or this whole portfolio's — risk comes from short-term rate
+moves, versus medium-term, versus long-term?" That breakdown matters a
+lot specifically for Japanese government bonds, because there is a
+well-known pattern of very long-term rates (20 to 40 years) behaving
+differently from the rest, driven by large institutional investors like
+pension funds and insurance companies buying up that end of the market.
+
+---
+
+## Technical details
+
 Key Rate Duration (KRD): per-tenor price sensitivity. Bumps one grid
 tenor's yield up **and** down by 1bp, holds every other tenor fixed,
 reprices both via `models.bond_pricing.price_bond()`, and measures the
