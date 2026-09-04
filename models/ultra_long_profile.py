@@ -1,37 +1,29 @@
 """
 ultra_long_profile.py
 
-The Japan-specific angle of this project: a focused view on the ultra-long
-(20Y+) segment of the curve. Ultra-long JGB demand -- insurers and pension
-funds extending duration at the long end, against thin issuance -- has
-been a persistent, real market theme, and the illustrative portfolio
-(Phase 2A) deliberately puts ~40% of its weight in the 20Y/30Y/40Y bonds
-specifically so this metric has something real to show.
+The Japan-specific angle of this project: a focused view on the
+ultra-long (20Y+) segment of the curve -- a persistent, real market theme
+(insurers and pension funds extending duration against thin issuance),
+which is why the illustrative portfolio deliberately puts ~40% of its
+weight in 20Y/30Y/40Y bonds.
 
-This module computes NO new sensitivity of its own. It takes the
-portfolio-level Key Rate Duration table (models.key_rate_duration.
-key_rate_duration_portfolio, Phase 3A) and the portfolio-level per-tenor
-DV01 table (models.dv01.dv01_by_tenor_portfolio, Phase 3B) -- both already
-built and validated -- and splits each one's "portfolio_total" row into
-two groups by tenor: "ultra-long" (maturity >= a threshold) and
-everything else. It is a slice-and-sum over numbers Phase 3A/3B already
-produced, not a fourth bump-and-reprice calculation.
+Computes NO new sensitivity of its own -- takes the portfolio-level KRD
+table (key_rate_duration.key_rate_duration_portfolio) and DV01 table
+(dv01.dv01_by_tenor_portfolio), both already validated, and splits each
+one's "portfolio_total" row into "ultra-long" (maturity >= a threshold)
+and everything else. A slice-and-sum, not a new bump-and-reprice
+calculation.
 
-WHY A THRESHOLD, NOT A HARDCODED TENOR LIST: "which tenors count as
-ultra-long" is answered by applying ULTRA_LONG_THRESHOLD_YEARS (>= 20Y) to
-whatever tenor grid the curve actually returns at call time -- the same
-non-fixed-tenor-grid contract every other module in this project follows
-(Phase 1 §4.5, Phase 2B §1.1, Phase 3A §3.2, Phase 3B §3.2). A hardcoded
-list like [20, 25, 30, 40] would silently stop including a tenor the
-moment the curve's source tier changed to one that doesn't quote it, or
-silently miss a new one a future source added -- exactly the failure mode
-that contract exists to prevent. Concretely: the Phase 1 embedded
-snapshot's grid classifies {20, 30, 40} as ultra-long; the live/cache
-grid's classifies {20, 25, 30, 40} -- two different sets, both correct,
-because both are the threshold applied fresh to that grid.
+WHY A THRESHOLD, NOT A HARDCODED TENOR LIST: which tenors count as
+ultra-long is decided by applying the threshold (>= 20Y) to whatever
+tenor grid the curve actually returns at call time, not a fixed list --
+same non-fixed-tenor-grid pattern as every other module here. Concretely:
+this project's snapshot data source classifies {20, 30, 40} as
+ultra-long; its live data source classifies {20, 25, 30, 40} -- different
+sets, both correct, because both are the threshold applied fresh to that
+grid. A hardcoded list would have gotten one of the two wrong.
 
-Reads the portfolio via config.portfolio_loader.load_portfolio() and the
-curve via data.jgb_curve_loader.load_jgb_curve() -- this module hardcodes
+Reads the portfolio and curve through their own loaders; hardcodes
 neither.
 """
 
@@ -43,9 +35,8 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")  # headless-safe: this module only ever saves a PNG,
-# never shows an interactive window, so a GUI backend is never needed and
-# would be a spurious dependency (and a possible crash) on a machine with
-# no display -- e.g. a CI runner or a validator's sandboxed environment.
+# never opens a window, so a GUI backend isn't needed and could crash on
+# a machine with no display (a CI runner, a validator's sandbox).
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -55,47 +46,31 @@ from data.jgb_curve_loader import load_jgb_curve
 from models.dv01 import DEFAULT_BUMP_SIZE, dv01_by_tenor_portfolio
 from models.key_rate_duration import key_rate_duration_portfolio
 
-# The Part C requirement's own example threshold, and the conventional
-# cutoff in JGB market commentary for "ultra-long" as opposed to merely
-# "long" (which usually means 10Y+): 20Y is where insurer/pension
-# duration-extension demand and BOJ purchase technicals are most commonly
-# discussed as a distinct segment. Also matches the illustrative
-# portfolio's own design -- its 20Y/30Y/40Y bonds are exactly the ones
-# meant to populate this segment (Phase 2A §1.1: "The curve extends to 40Y
-# specifically to support the Ultra-Long Duration Profile metric").
+# The conventional cutoff in JGB market commentary for "ultra-long" as
+# opposed to merely "long" (10Y+) -- matches the illustrative portfolio's
+# own design, whose 20Y/30Y/40Y bonds exist to populate this segment.
 DEFAULT_ULTRA_LONG_THRESHOLD_YEARS = 20.0
 
 # outputs/ sits next to models/ at the repo root, resolved from this
-# module's own location rather than the caller's working directory -- the
-# same pattern DEFAULT_PORTFOLIO_PATH uses in config/portfolio_loader.py
-# and CACHE_PATH uses in data/jgb_curve_loader.py.
+# module's own location rather than the caller's working directory.
 DEFAULT_CHART_PATH = Path(__file__).resolve().parent.parent / "outputs" / "ultra_long_dv01_profile.png"
 
 
 @dataclass(frozen=True)
 class UltraLongProfile:
     """The ultra-long segment's share of portfolio-level interest rate
-    risk, at both the KRD (percentage-terms) and DV01 (currency-terms)
-    level. Frozen -- a computed profile is a snapshot of one portfolio
-    against one curve at one threshold; recompute rather than mutate if
-    any of those change, the same reasoning config/portfolio_loader.py's
-    Bond is frozen for.
+    risk, in both KRD (percentage) and DV01 (currency) terms. Frozen -- a
+    snapshot of one portfolio against one curve at one threshold; recompute
+    rather than mutate if any of those change.
 
     threshold_years : the maturity cutoff used (>= counts as ultra-long).
     tenors : every tenor on the curve's own grid, ascending.
     ultra_long_tenors : the subset of `tenors` that met the threshold --
-        printed explicitly because, per the module's non-fixed-grid
-        design, this set is not knowable ahead of time from the threshold
-        alone; it depends on which tenors the curve actually quoted.
-    krd_by_tenor / dv01_by_tenor : the portfolio's total (weighted) KRD /
-        DV01 at each tenor -- the same "portfolio_total" rows
-        key_rate_duration_portfolio / dv01_by_tenor_portfolio already
-        produce, carried through unchanged.
-    krd_total / dv01_total : sum across ALL tenors -- approximates the
-        portfolio's overall (parallel-shift) duration / DV01, to the same
-        precision Phase 3A §2 / Phase 3B §2 already establish for a single
-        bond (the portfolio total is a weighted sum of per-bond figures
-        that each carry that same small, explained gap).
+        not knowable from the threshold alone, since it depends on which
+        tenors the curve actually quoted, so it's stored explicitly.
+    krd_by_tenor / dv01_by_tenor : the portfolio's total KRD / DV01 at
+        each tenor.
+    krd_total / dv01_total : sum across all tenors.
     krd_ultra_long / dv01_ultra_long : sum restricted to `ultra_long_tenors`.
     """
 
@@ -119,8 +94,7 @@ class UltraLongProfile:
     def dv01_ultra_long_share(self) -> float:
         """Fraction (0 to 1) of total portfolio DV01 sitting at or beyond
         threshold_years -- the currency-terms version of the same split,
-        and the number Part C's own requirements name as "the number a
-        risk committee would actually ask for"."""
+        the number a risk committee would actually ask for."""
         return self.dv01_ultra_long / self.dv01_total
 
 
@@ -133,11 +107,10 @@ def compute_ultra_long_profile(
 ) -> UltraLongProfile:
     """Build the ultra-long profile for one portfolio against one curve.
 
-    Calls key_rate_duration_portfolio (Phase 3A) and dv01_by_tenor_portfolio
-    (Phase 3B) exactly once each, takes their "portfolio_total" rows, and
-    splits each row's tenor columns at `threshold_years`. No pricing,
-    bumping, or aggregation logic is reimplemented here -- see the module
-    docstring for why.
+    Calls key_rate_duration_portfolio and dv01_by_tenor_portfolio once
+    each, takes their "portfolio_total" rows, and splits the tenor
+    columns at `threshold_years`. No pricing or aggregation logic is
+    reimplemented here.
     """
     krd_table = key_rate_duration_portfolio(portfolio, curve, freq=freq, bump_size=bump_size)
     dv01_table = dv01_by_tenor_portfolio(portfolio, curve, freq=freq, bump_size=bump_size)
@@ -168,16 +141,13 @@ def plot_ultra_long_profile(
     metric: str = "dv01",
 ) -> Path:
     """Bar chart of portfolio DV01 (or KRD) contribution by tenor, with
-    the ultra-long segment (>= threshold_years) visually distinguished by
-    color, saved as a PNG to `output_path`. Returns the resolved Path.
+    the ultra-long segment (>= threshold_years) colored differently,
+    saved as a PNG to `output_path`. Returns the resolved Path.
 
-    `metric`: "dv01" (default) or "krd". DV01 was chosen as the default
-    over KRD because it is the currency-terms figure -- the one Part C's
-    own requirements frame the interpretive summary around ("what fraction
-    of total DV01 comes from beyond 20Y"), and the more concrete number a
-    risk committee would actually look at on a chart. `metric="krd"`
-    produces the same chart shape against the percentage-terms figures
-    instead, for a caller who wants that view.
+    `metric`: "dv01" (default) or "krd". DV01 defaults on since it's the
+    more concrete, currency figure a risk committee would actually look
+    at; `metric="krd"` produces the same chart against the percentage
+    figures instead.
     """
     if metric not in ("dv01", "krd"):
         raise ValueError(f"metric must be 'dv01' or 'krd', got {metric!r}")

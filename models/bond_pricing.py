@@ -8,22 +8,14 @@ discounted at the yield the curve implies for THAT cash flow's own maturity
     Price = sum_i [ CF_i / (1 + y(t_i)/freq)^(freq * t_i) ]
 
 y(t_i) comes from curve_yield_at(), which interpolates between the curve's
-own tenor points and deliberately extrapolates FLAT beyond them (see its
-docstring for why). Semiannual coupons (freq=2) by default, parameterized.
+own tenor points and extrapolates FLAT beyond them (see its docstring).
+Semiannual coupons (freq=2) by default, parameterized.
 
-Reads the portfolio via config.portfolio_loader.load_portfolio() and the
-curve via data.jgb_curve_loader.load_jgb_curve() -- this module never
-hardcodes a bond list or a curve.
-
-Cheap to call repeatedly against a modified curve: price_bond does no
-per-call setup beyond building this one bond's cash flow schedule (at most
-freq * 40 = 80 rows for the longest illustrative bond), and caches nothing
-tied to a specific curve instance. That is deliberate: Phase 3 adds Key Rate
-Duration, DV01, and an ultra-long duration profile, all computed by bumping
-one tenor's yield and repricing -- the intended usage is "bump curve['yield']
-at one row, call price_bond again," many times per bond, and this function
-is built so that loop stays cheap without any Phase-3-specific plumbing
-added now.
+Reads the portfolio and curve through their own loaders -- never hardcodes
+either. Cheap to call repeatedly against a modified curve on purpose:
+KRD, DV01, and the ultra-long profile all work by bumping one curve row
+and calling price_bond again, many times per bond, so this function does
+no per-call setup beyond building one bond's cash flow schedule.
 """
 
 from __future__ import annotations
@@ -38,39 +30,21 @@ from data.jgb_curve_loader import load_jgb_curve
 def curve_yield_at(curve: pd.DataFrame, maturity_years):
     """Interpolate (or extrapolate) curve['yield'] to an arbitrary maturity.
 
-    maturity_years may be a scalar or an array-like of maturities; the
-    return type follows numpy.interp's own (a numpy scalar or an ndarray),
-    so this doubles as the vectorized lookup price_bond uses to evaluate an
-    entire cash flow schedule in one call.
+    maturity_years may be a scalar or an array-like; price_bond calls this
+    once with a whole cash-flow-time array rather than once per cash flow.
 
-    WITHIN the curve's tenor range: linear interpolation between the two
-    bracketing points (numpy.interp). This makes no assumption about how
-    many tenors the curve has or which specific ones they are -- correct by
-    construction whether the curve is the 12-point embedded snapshot or the
-    15-point live/cache grid (data/jgb_curve_loader.py, Phase 1 doc §4.5);
-    reindexing onto a fixed tenor set here would silently break the moment
-    the curve's actual source tier changed.
+    WITHIN the curve's range: straight-line interpolation between the two
+    surrounding points. Makes no assumption about how many tenors the
+    curve has or which ones -- reindexing onto a fixed tenor set would
+    silently break the moment the curve's source changed.
 
-    OUTSIDE that range (a cash flow shorter than the curve's shortest tenor,
-    or longer than its longest): FLAT extrapolation -- the boundary yield is
-    held constant, rather than linearly continuing the curve's terminal
-    slope. This is a deliberate policy, not numpy.interp's incidental
-    default (achieved here by passing left=/right= explicitly, so the
-    behavior is spelled out rather than inherited by omission):
-
-    - Continuing the observed slope past the last (or first) quoted tenor
-      can produce an implausible or even negative yield the further out it
-      is extrapolated -- e.g. continuing a steep front-end slope out to a
-      50Y synthetic tenor, or a downward-sloping short end out past 1M.
-      Flat extrapolation cannot do that: every extrapolated yield it
-      returns is one the curve actually quoted somewhere.
-    - This is not a hypothetical edge case for this project. The live/cache
-      grid's shortest tenor is 1Y (no sub-year points at all -- Phase 1
-      §4.5's _MOF_TENOR_COLUMNS starts at 1Y). Every semiannual bond's
-      FIRST coupon cash flow lands at t=0.5, below that grid's shortest
-      tenor -- so under the live/cache tier, this branch is exercised on
-      every single bond in the portfolio, not just a hypothetical
-      ultra-short or ultra-long one.
+    OUTSIDE that range: FLAT extrapolation -- the nearest known yield is
+    held constant rather than continuing the curve's slope, which could
+    otherwise produce an implausible or negative rate. Not a hypothetical
+    edge case here: the live/cached curve's shortest tenor is 1 year, but
+    every semiannual bond's first coupon lands at 0.5 years -- so this
+    branch fires on the very first cash flow of every bond whenever that
+    data source is used.
     """
     curve_sorted = curve.sort_values("maturity_years")
     tenors = curve_sorted["maturity_years"].to_numpy()
@@ -85,37 +59,27 @@ def price_bond(
     curve: pd.DataFrame,
     freq: int = 2,
 ) -> float:
-    """Price a bond by discounting each cash flow at the curve yield
-    interpolated to that cash flow's own maturity (see curve_yield_at).
+    """Price a bond by discounting each cash flow at the curve yield for
+    that cash flow's own maturity (see curve_yield_at).
 
-    Cash flow schedule: `freq` payments per year, generated BACKWARD from
-    maturity_years in steps of 1/freq -- so the final payment (coupon +
-    face value) lands exactly at maturity_years, and earlier payments are
-    spaced 1/freq apart before it. A maturity_years that is not an exact
-    multiple of 1/freq (e.g. one derived from a real maturity_date --
-    config/portfolio_loader.py's SCHEMA FORWARD-COMPATIBILITY note) simply
-    gets a single short front "stub" period rather than an error; this
-    keeps price_bond usable unchanged once a real-issue portfolio exists,
-    without a day-count-precise settlement/accrual model, which is out of
-    scope here (config's docs, Phase 2A §3.3/§3.4) and for this function.
+    Cash flow schedule: `freq` payments per year, built BACKWARD from
+    maturity_years so the final payment lands exactly there. A maturity
+    that isn't an exact multiple of 1/freq (e.g. derived from a real
+    redemption date) just gets one shorter first period, not an error.
 
     Parameters
     ----------
     face_value : redemption amount, must be > 0.
-    coupon_rate : annual coupon, decimal (0.02 == 2%). May be 0 (a
-        zero-coupon bond is a valid, if degenerate, input).
+    coupon_rate : annual coupon, decimal (0.02 == 2%). May be 0.
     maturity_years : years to maturity, must be > 0.
     curve : a par-yield curve DataFrame with columns [maturity_years,
-        yield] (yield decimal), as returned by load_jgb_curve() -- any
-        tenor grid, any number of rows >= 1.
-    freq : coupon payments per year (2 = semiannual, the market-standard
-        JGB convention and this function's default; 1 = annual, 4 =
-        quarterly, etc.).
+        yield] (yield decimal), any tenor grid, any number of rows >= 1.
+    freq : coupon payments per year (2 = semiannual, the JGB default).
 
     Returns
     -------
-    float : the bond's price per `face_value` of face amount (e.g. ~100 for
-        a bond priced near par on a face value of 100).
+    float : price per `face_value` of face amount (~100 for a bond
+        priced near par on a face value of 100).
     """
     if face_value <= 0:
         raise ValueError(f"face_value must be positive, got {face_value}")
@@ -126,10 +90,8 @@ def price_bond(
     if curve.empty:
         raise ValueError("curve is empty -- cannot price against it")
 
-    # max(1, ...) floors an extremely short maturity (maturity_years * freq
-    # rounding to 0) at a single terminal payment, rather than an empty
-    # schedule pricing to 0 -- a degenerate case, not expected in practice
-    # (the shortest illustrative bond is 2Y), but the guard costs nothing.
+    # max(1, ...) guards an extremely short maturity from producing an
+    # empty schedule (pricing to 0) instead of one terminal payment.
     n_periods = max(1, round(maturity_years * freq))
     period_index = np.arange(1, n_periods + 1)
     cash_flow_times = maturity_years - (n_periods - period_index) / freq
@@ -151,16 +113,13 @@ def price_portfolio(
     """Price every bond in `portfolio` against one `curve`.
 
     Takes an already-loaded portfolio and curve rather than loading them
-    itself -- no hidden file/network I/O here, so this stays trivially
-    testable with in-memory fixtures and reusable for Phase 3's bump-and-
-    reprice loop (bump `curve` once, call this again). Loading is the
-    caller's job: see __main__ below for the normal-usage pattern.
+    itself -- no hidden file/network I/O, so this is easy to test and
+    reusable against a curve a caller repeatedly bumps and reprices.
 
     Returns a DataFrame with one row per bond, in portfolio order: name,
     maturity_years, coupon_rate, weight, price. A portfolio-level weighted
     price is (df.weight * df.price).sum() -- valid directly because
-    load_portfolio() already guarantees weights sum to 1.0
-    (config/portfolio_loader.py's WEIGHT_SUM_TOLERANCE check).
+    load_portfolio() already guarantees weights sum to 1.0.
     """
     rows = [
         {

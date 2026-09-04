@@ -1,36 +1,30 @@
 """
 jgb_curve_loader.py
 
-Loads a Japanese Government Bond (JGB) par yield curve for use by the
-pricing / KRD / PCA / scenario models in /models.
+Loads a Japanese Government Bond (JGB) par yield curve for the pricing /
+KRD / DV01 models in /models.
 
 Curve sources, tried in order:
 
-1. LIVE: pull the current JGB curve directly from Japan's Ministry of
-   Finance (MOF), which publishes JGB reference yields as a public CSV:
-       https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/jgbcme.csv
-   The pull is wrapped in try/except so any failure (no network, MOF
-   changing the file format, a timeout, ...) never crashes the program.
-   A successful pull is validated and then written to a local cache (see 2).
+1. LIVE: pull the current curve directly from Japan's Ministry of Finance
+   (MOF), which publishes JGB reference yields as a public CSV. Wrapped
+   in try/except so any failure (no network, a format change, a timeout)
+   never crashes the program; a successful pull is validated and written
+   to a local cache (see 2).
 
 2. CACHE: the most recent curve a live pull returned ON THIS MACHINE,
-   persisted to data/_jgb_curve_cache.json. Used when the live pull fails
-   so an offline run still gets a real, recent curve. Machine-local and
-   rewritten on every successful pull -- gitignored, never committed.
+   used when the live pull fails so an offline run still gets a real,
+   recent curve. Machine-local, gitignored, never committed.
 
-3. SNAPSHOT: a real MOF par curve for a single fixed date (SNAPSHOT_DATE),
-   embedded as constants and served UNMODIFIED -- no parallel shift, no
-   anchoring to a separate print. This is the floor: reached only when the
-   live pull fails AND no cache file exists (e.g. first run on a fresh
-   machine with no network). It is a fixed past date, so it may be stale;
-   refresh it by committing a newer snapshot -- see docs/phase_1_documentation.md
-   section 6.
+3. SNAPSHOT: a real MOF curve for one fixed past date, embedded as
+   constants and served UNMODIFIED. The floor -- reached only when the
+   live pull fails AND no cache exists. May be stale since it's a fixed
+   date; refresh by committing a newer snapshot (docs/phase_1_documentation.md
+   §5).
 
-Output contract: load_jgb_curve() returns a pandas DataFrame with columns:
-    - maturity_years : float, tenor in years
-    - yield          : float, par yield expressed as a decimal (e.g. 0.0288
-                        for 2.88%), NOT a percentage.
-sorted ascending by maturity_years with a fresh RangeIndex.
+Output contract: load_jgb_curve() returns a DataFrame with columns
+maturity_years (float, years) and yield (float, decimal -- 0.0288, not
+2.88), sorted ascending with a fresh RangeIndex.
 """
 
 from __future__ import annotations
@@ -52,12 +46,12 @@ LIVE_REQUEST_TIMEOUT_SECONDS = 10
 
 # Local write-through cache: the most recent validated live curve. Sits next to
 # this module, is rewritten on every successful pull, and is gitignored (it is
-# machine-local state, not source). See docs/phase_1_documentation.md sections 1.4 / 5.2.
+# machine-local state, not source). See docs/phase_1_documentation.md §1.4.
 CACHE_PATH = Path(__file__).with_name("_jgb_curve_cache.json")
 
 # Plausibility band for a JGB par yield expressed as a decimal. A curve with any
 # yield outside this range is treated as a parse/format failure, not as data --
-# the semantic check that docs/phase_1_documentation.md section 4.4 flagged as missing.
+# the semantic check docs/phase_1_documentation.md §3.4 discusses.
 # It gates both the live pull and anything read back from the cache.
 MIN_PLAUSIBLE_YIELD = -0.01  # -1%
 MAX_PLAUSIBLE_YIELD = 0.10  # +10%
@@ -66,7 +60,7 @@ MAX_PLAUSIBLE_YIELD = 0.10  # +10%
 # SNAPSHOT floor: a REAL MOF JGB par yield curve for SNAPSHOT_DATE (percent).
 # Actual published reference rates, not synthetic/interpolated values, and
 # served without any transformation. Keys are tenor in years, values percent.
-# Refresh by replacing both constants with a newer real curve (see section 6).
+# Refresh by replacing both constants with a newer real curve (see §5).
 # ---------------------------------------------------------------------------
 SNAPSHOT_DATE = "2026-04-06"
 SNAPSHOT_CURVE_PCT: dict[float, float] = {
@@ -315,7 +309,7 @@ def load_jgb_curve(prefer_live: bool = True, verbose: bool = True) -> pd.DataFra
         print(
             f"[jgb_curve_loader] Loaded SNAPSHOT curve: real MOF par curve for "
             f"{SNAPSHOT_DATE}, served unmodified ({why}). A fixed past date -- it "
-            "may be stale; see docs/phase_1_documentation.md section 6.",
+            "may be stale; see docs/phase_1_documentation.md §5.",
             file=sys.stderr,
         )
     return df

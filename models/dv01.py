@@ -2,49 +2,28 @@
 dv01.py
 
 DV01 ("dollar value of 01"): currency-terms price sensitivity to a 1bp
-move in yield -- the same underlying sensitivity Key Rate Duration
-(models/key_rate_duration.py) measures in percentage/duration terms,
-rescaled into currency units so it can be read directly as a hedge size.
+move in yield -- the same sensitivity Key Rate Duration measures in
+percentage terms, rescaled into currency so it reads directly as a hedge
+size.
 
-    DV01          = Price * ModifiedDuration * 0.0001
-    DV01_k (tenor)  = Price * KRD_k           * 0.0001
+    DV01           = Price * ModifiedDuration * 0.0001
+    DV01_k (tenor) = Price * KRD_k           * 0.0001
 
-ModifiedDuration is models.key_rate_duration.effective_duration_bond(...)
-(a parallel-shift, central-difference modified duration -- already exactly
-the quantity this formula calls for); KRD_k is
-models.key_rate_duration.key_rate_duration_bond(...)'s per-tenor output.
-Neither duration nor pricing is recomputed here -- this module is a thin
-currency-unit conversion layer over Phase 2B's price_bond and Phase 3A's
-KRD/effective-duration, not a new sensitivity calculation.
+Neither duration nor pricing is recomputed here -- this is a thin
+currency-unit conversion layer over bond_pricing.price_bond() and
+key_rate_duration's existing KRD/duration functions.
 
-UNITS: every DV01 in this module is in the SAME units as price_bond's own
-output -- currency per 100 face value (JPY, for JGBs), never scaled to a
-real notional or assets-under-management figure. This is a deliberate
-choice, not the only one available (per-bond, or notional-scaled, were the
-named alternatives): it costs nothing (price_bond, price_portfolio, and
-key_rate_duration_portfolio already all report "per 100 face" without any
-notional scaling -- Phase 2A §1.1 explains why face_value=100 was chosen
-as the illustrative convention in the first place), and it means every
-number in this module is directly comparable to the price and KRD figures
-already produced by this project, with no unit conversion a reader has to
-track. A real trading book would scale this by actual position notional;
-this project's portfolio is illustrative (Phase 2A's own disclaimer) and
-has no such figure to scale by.
+UNITS: every DV01 here is in the same units price_bond already uses --
+currency per 100 face value, never scaled to a real position size. Chosen
+because every other number in this project already uses that convention
+(no conversion for a reader to track), and because scaling to a "real"
+position would just be inventing a second made-up number alongside the
+portfolio's already-illustrative coupons and weights. A real trading book
+would apply an actual position size on top of this.
 
-Reads the portfolio via config.portfolio_loader.load_portfolio() and prices
-via models.bond_pricing.price_bond() / models.key_rate_duration -- this
-module hardcodes neither a bond list nor a curve, and repeats no pricing or
-differencing logic of its own.
-
-WHY ITS OWN MODULE, NOT FOLDED INTO key_rate_duration.py: this project has
-kept one file per phase-part deliverable since Phase 2B (bond_pricing.py)
-and Phase 3A (key_rate_duration.py), each with its own 1:1 documentation
-file -- DV01 is Part B of Phase 3, a separate deliverable with its own
-requirements (currency units, a distinct validation test) sitting on TOP of
-both bond_pricing.py and key_rate_duration.py rather than beside either
-one. Keeping it separate also keeps key_rate_duration.py focused on
-percentage-terms sensitivity only, and leaves room for a future currency-
-scaled metric (e.g. hedge notionals) to land here without touching Part A.
+Own module, not folded into key_rate_duration.py, matching this project's
+one-file-per-deliverable pattern -- keeps that module focused on
+percentage-terms sensitivity only.
 """
 
 from __future__ import annotations
@@ -69,26 +48,16 @@ def dv01_bond(
     freq: int = 2,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> float:
-    """One bond's DV01: the currency price change for a bump_size move in
-    yield, via the closed-form modified-duration formula
+    """One bond's DV01: Price * ModifiedDuration * bump_size.
 
-        DV01 = Price * ModifiedDuration * bump_size
-
-    Price is price_bond(...) (currency per 100 face -- see module
-    docstring); ModifiedDuration is effective_duration_bond(...), the same
-    central-difference parallel-shift duration Phase 3A already computes
-    and validates. bump_size defaults to 1bp (DEFAULT_BUMP_SIZE), which is
-    what makes this a genuine "DV01" (dollar value of 01, i.e. of ONE
-    basis point specifically) rather than the dollar value of some other
-    shock size -- bump_size does double duty here: it is both the
-    numerical differencing step effective_duration_bond uses internally,
-    and, by definition, the shock size this DV01 figure represents. Pass a
-    different value deliberately if you want the dollar value of a
-    different-sized shock; the result is no longer "DV01" in the
-    traditional sense if you do.
+    Two existing numbers multiplied together, nothing recomputed.
+    bump_size does double duty: it's the numerical step
+    effective_duration_bond uses internally, and, by definition, the
+    shock size this DV01 represents -- its 1bp default is what makes this
+    a genuine "DV01" rather than the value of some other-sized move.
 
     Raises whatever price_bond / effective_duration_bond raise for a bad
-    input (not duplicated here).
+    input.
     """
     price = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq)
     modified_duration = effective_duration_bond(
@@ -105,28 +74,18 @@ def dv01_by_tenor_bond(
     freq: int = 2,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> pd.Series:
-    """One bond's DV01, broken out by curve tenor -- the currency analogue
-    of key_rate_duration_bond's percentage-terms KRD vector, and the
-    number that actually converts into a hedge size: "how many currency
-    units does this bond gain or lose if just the 10Y point moves 1bp"
-    tells you how much of a 10Y hedge instrument you'd need, in a way a
-    duration figure alone does not.
+    """One bond's DV01, broken out by curve tenor: Price * KRD_k *
+    bump_size, one value per tenor -- the currency analogue of
+    key_rate_duration_bond's KRD vector, and the number that actually
+    sizes a hedge ("how much of a 10Y hedge do I need to offset this
+    bond's 10Y exposure"), which a duration figure alone doesn't tell
+    you.
 
-        DV01_k = Price * KRD_k * bump_size
-
-    Price is price_bond(...) (one call, shared across every tenor -- the
-    bond's price does not depend on which tenor you're asking about);
-    KRD_k is key_rate_duration_bond(...)'s per-tenor Series. Returned as a
-    pandas Series with the same maturity_years index KRD uses (Phase 3A
-    §1.1's non-fixed-tenor-grid contract applies identically here -- the
-    tenor set is whatever `curve` contains at call time).
-
-    Because DV01_k is just KRD_k rescaled by the same two constants
-    (Price and bump_size) at every tenor, summing this Series across
-    tenors approximates the bond's total dv01_bond(...) to the same
-    precision key_rate_duration_bond's per-tenor sum approximates
-    effective_duration_bond (Phase 3A §2) -- the rescaling is linear and
-    introduces no new error of its own.
+    Price is one price_bond() call, shared across every tenor. Because
+    this is just KRD rescaled by the same two constants at every tenor,
+    summing this Series across tenors inherits the same accuracy
+    key_rate_duration_bond's own tenor sum has relative to overall
+    duration -- no new error from the rescaling itself.
     """
     price = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq)
     krd = key_rate_duration_bond(face_value, coupon_rate, maturity_years, curve, freq=freq, bump_size=bump_size)
@@ -139,27 +98,15 @@ def dv01_portfolio(
     freq: int = 2,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> pd.DataFrame:
-    """Per-bond DV01 across a portfolio, mirroring price_portfolio's own
-    shape (models/bond_pricing.py §1.3) rather than
-    key_rate_duration_portfolio's: one row per bond, in portfolio order,
-    columns [name, maturity_years, coupon_rate, weight, price,
-    modified_duration, dv01] -- no baked-in total row.
+    """Per-bond DV01 across a portfolio, mirroring price_portfolio's shape
+    (one row per bond, no total row) rather than
+    key_rate_duration_portfolio's, since it answers a per-bond question
+    ("what is each bond's own DV01"). A portfolio-level total is just as
+    computable from this table as price_portfolio's weighted price is:
+    `(df.weight * df.dv01).sum()`.
 
-    That choice, not the alternative: dv01_portfolio is structurally the
-    direct DV01 extension of price_portfolio (same columns, same one-
-    row-per-bond shape, two new columns appended) -- it answers "what is
-    each bond's own DV01," the same kind of question price_portfolio
-    answers for price. A portfolio-level total is exactly as computable
-    from this DataFrame as price_portfolio's own portfolio-level weighted
-    price already is: `(df.weight * df.dv01).sum()`, valid directly
-    because load_portfolio() guarantees weights sum to 1.0 (Phase 2A
-    §1.4) -- the same weight convention Phase 2B and Phase 3A both already
-    rely on, so no new aggregation rule is introduced here.
-
-    dv01_by_tenor_portfolio (below) is the other DV01 aggregation this
-    module provides, and DOES bake in a portfolio_total row -- because it
-    mirrors key_rate_duration_portfolio instead, for the matching reason:
-    it answers a per-TENOR question, not a per-bond one.
+    dv01_by_tenor_portfolio (below) makes the opposite shape choice on
+    purpose, since it answers a per-tenor question instead.
     """
     rows = [
         {
@@ -189,20 +136,12 @@ def dv01_by_tenor_portfolio(
     freq: int = 2,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> pd.DataFrame:
-    """Per-bond and portfolio-level DV01, broken out by curve tenor --
-    the currency analogue of key_rate_duration_portfolio, and mirroring
-    its shape exactly (models/key_rate_duration.py §1.4): one row per
-    bond (indexed by name, portfolio order) plus a final "portfolio_total"
-    row, one column per curve tenor.
-
-        DV01_portfolio,k = sum_i weight_i * DV01_i,k
-
-    Same weighted-sum aggregation key_rate_duration_portfolio already
-    uses for KRD, applied here to DV01's currency-terms values instead of
-    KRD's percentage-terms ones -- no new aggregation rule, just the same
-    one reapplied. This is the table that actually sizes tenor-specific
-    hedges at the portfolio level: "how many currency units does the
-    whole book gain or lose if only the 20Y point moves 1bp."
+    """Per-bond and portfolio-level DV01 by tenor -- mirrors
+    key_rate_duration_portfolio's shape: one row per bond plus a
+    "portfolio_total" row (each bond's weight times its own DV01,
+    summed), one column per tenor. The table that sizes tenor-specific
+    hedges at the portfolio level: how many currency units the whole book
+    gains or loses if only, say, the 20Y point moves 1bp.
     """
     per_bond = {
         bond.name: dv01_by_tenor_bond(

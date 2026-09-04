@@ -2,65 +2,33 @@
 portfolio_loader.py
 
 Single source of truth for the project's bond portfolio. Every downstream
-phase (pricing in /models, Key Rate Duration and DV01 in Phase 3, the
-Phase 8 Streamlit dashboard) reads the portfolio through load_portfolio()
-rather than hardcoding bond definitions into individual modules.
+module reads the portfolio through load_portfolio() rather than
+hardcoding bond definitions.
 
 Default data: config/portfolio.json.
 
-ILLUSTRATIVE DATA NOTICE
-------------------------
-The coupon rates in the default config/portfolio.json are ILLUSTRATIVE --
-chosen to sit near current tenor yields (see data/jgb_curve_loader.py) so
-each bond prices near par under the loaded curve. They do NOT correspond to
-real outstanding JGB issues (real issues would carry ISINs, actual coupon
-schedules, and actual amounts outstanding). Substituting real ISINs and
-their actual coupons would be a credibility upgrade for a later iteration;
-that substitution belongs in the Phase 6 validation report's assumptions
-section, alongside the other known-limitation writeups from Phase 1
-(docs/phase_1_documentation.md section 4).
+ILLUSTRATIVE DATA NOTICE: the default portfolio's coupon rates are made
+up -- chosen to sit near current tenor yields so each bond prices near
+par under the loaded curve. They do NOT correspond to real outstanding
+JGB issues.
 
-Output contract: load_portfolio() returns a list[Bond], one entry per bond,
-in the order given in the config file. Each Bond has:
-    - name          : str, unique within the portfolio
-    - maturity_years: float, > 0 -- always resolved to a number (see below),
-                      whichever of maturity_years / maturity_date the config
-                      entry actually specified
-    - coupon_rate   : float, decimal (0.020 == 2.0%), in [0, MAX_PLAUSIBLE_COUPON_RATE]
-    - face_value    : float, > 0
-    - weight        : float, >= 0; weights across the portfolio sum to 1.0
-    - isin          : str | None -- optional, unvalidated beyond non-empty
-    - issue_date    : str | None -- optional, ISO "YYYY-MM-DD"
-    - maturity_date : str | None -- optional, ISO "YYYY-MM-DD"
-    - tenor_class   : str | None -- optional free-text label (e.g. "20Y")
+Output contract: load_portfolio() returns a list[Bond], one entry per
+bond, in config-file order. Each Bond has name, maturity_years (always
+resolved to a number -- see below), coupon_rate (decimal), face_value,
+weight (sums to 1.0 across the portfolio), plus four optional fields
+(isin, issue_date, maturity_date, tenor_class) defaulting to None.
 
-SCHEMA FORWARD-COMPATIBILITY (real-issue portfolios, later phase)
-------------------------------------------------------------------
-A later phase adds a JGB issue reference module (real MOF issuance data) and
-a Streamlit dashboard letting a user build a portfolio from real outstanding
-issues instead of illustrative ones. This module's schema and loader are
-built to accept that data now, so no migration is needed then:
-
-- `isin`, `issue_date`, `maturity_date`, `tenor_class` are all OPTIONAL,
-  per-bond, alongside the original fields. They may be absent, as they are
-  throughout the illustrative default portfolio -- absence is not an error,
-  and every consumer of Bond must treat them as possibly None.
-- A bond's maturity may be given EITHER as `maturity_years` directly (the
-  illustrative case: a round number chosen by hand) OR as `maturity_date`
-  (the real-issue case: an actual redemption date), from which remaining
-  years is computed relative to a valuation date. If `maturity_date` is
-  present, it wins and its derived years is what `Bond.maturity_years`
-  holds; if only `maturity_years` is present, that value is used as-is; if
-  both are present they must agree (within MATURITY_CONSISTENCY_TOLERANCE_YEARS)
-  or loading raises; if neither is present, loading raises. See
-  `_resolve_maturity`.
-- `load_portfolio` takes an optional `valuation_date` (default: today) used
-  for that maturity_date -> years computation, so a pinned run with a real-
-  issue portfolio is reproducible months later on any machine -- the same
-  reproducibility concern `prefer_live=False` addresses for the curve loader.
-- Deliberately NOT built yet: the issue reference module itself, any MOF
-  issuance fetching, and any ISIN format validation beyond "non-empty" --
-  only the schema and this loader are made ready to accept that data.
+SCHEMA FORWARD-COMPATIBILITY (real bonds, later phase): the schema
+already accepts real-issue data, so a future version needs no migration.
+The four optional fields may be absent (as in the illustrative default)
+-- every consumer must treat them as possibly None. A bond's maturity may
+be given either directly as `maturity_years`, or as `maturity_date` (an
+actual redemption date, from which years-remaining is computed); if both
+are given they must roughly agree or loading raises. `load_portfolio`
+takes an optional `valuation_date` (default: today) that this computation
+is measured from, so a pinned run stays reproducible. Not built yet: the
+real-issue data source itself, or ISIN format validation beyond
+"non-empty" -- only the schema and loader are ready to accept that data.
 """
 
 from __future__ import annotations
@@ -73,49 +41,41 @@ from pathlib import Path
 # Default portfolio file, sitting next to this module.
 DEFAULT_PORTFOLIO_PATH = Path(__file__).with_name("portfolio.json")
 
-# A JGB coupon above this is far outside anything plausible for the current
-# rate environment and is almost certainly a percent/decimal unit error
-# (e.g. "2.0" meant as 2% but read as 200%). Same spirit as the yield
-# plausibility band in data/jgb_curve_loader.py -- catch a units mistake at
-# load time rather than let it silently inflate every downstream price.
+# A coupon above this is almost certainly a percent/decimal unit error
+# (e.g. "2.0" meant as 2% but read as 200%) rather than a real JGB rate.
 MAX_PLAUSIBLE_COUPON_RATE = 0.20  # 20%, decimal
 
-# Tolerance for the portfolio weights summing to 1.0, to absorb float
-# representation error from JSON parsing -- not a modelling choice.
+# Tolerance for the portfolio weights summing to 1.0, absorbing float
+# representation error from JSON parsing.
 WEIGHT_SUM_TOLERANCE = 1e-6
 
-# When a bond specifies BOTH maturity_years and maturity_date, the two must
-# agree to within this many years or loading raises -- catches a config
-# entry where one field was updated (e.g. a corrected maturity_date) and the
-# other was not. Set loosely enough (~18 days) to tolerate maturity_years
-# being a hand-rounded number (e.g. "20") against a date-derived value that
-# is never exactly round (19.98 years), but tight enough to still catch a
-# real mismatch (a maturity_date a full year off from maturity_years).
+# If a bond specifies BOTH maturity_years and maturity_date, they must
+# agree within this many years or loading raises -- catches a config entry
+# where one field was updated and the other wasn't. Loose enough to tolerate
+# a hand-rounded maturity_years against a never-quite-round date-derived
+# value, tight enough to catch a real mismatch.
 MATURITY_CONSISTENCY_TOLERANCE_YEARS = 0.05
 
-# Day-count convention for deriving years-to-maturity from maturity_date and
-# a valuation date: simple ACT/365.25 (calendar days / average year length).
-# This is a deliberately coarse approximation, not a bond-market day-count
-# convention (ACT/ACT, 30/360, etc.) -- the only downstream use of the
-# result is as a continuous "years" input to curve interpolation (Part B),
-# which already treats maturity as a real number, not a schedule of dates.
-# A precise day-count matters for accrued interest and settlement mechanics,
-# which are out of scope for both this loader and the Part B pricing engine.
+# Simple ACT/365.25 approximation (calendar days / average year length) for
+# turning a maturity_date into years-remaining -- not a precise bond-market
+# day-count convention. Deliberately coarse: the only downstream use is as
+# a "years" input to curve interpolation, which is itself only a handful
+# of discrete points, so day-count precision here wouldn't add accuracy.
+# A real day-count convention matters for accrued interest and settlement,
+# which are out of scope for this loader and the pricing engine.
 DAYS_PER_YEAR = 365.25
 
 
 @dataclass(frozen=True)
 class Bond:
-    """One portfolio holding. Immutable -- a loaded portfolio is a fixed input
-    for a given pricing/KRD run; edit config/portfolio.json (or point at an
-    alternative file) and reload rather than mutating a loaded Bond.
+    """One portfolio holding. Immutable -- edit config/portfolio.json (or
+    point at an alternative file) and reload rather than mutating a
+    loaded Bond.
 
-    isin / issue_date / maturity_date / tenor_class are OPTIONAL and default
-    to None -- populated for a real-issue portfolio, absent for the
-    illustrative default. maturity_years is always populated: it is either
-    taken directly from the config or derived from maturity_date (see
-    _resolve_maturity), so every consumer can keep reading it unconditionally
-    regardless of which form the source config used."""
+    isin / issue_date / maturity_date / tenor_class are OPTIONAL, default
+    None. maturity_years is always populated -- either taken directly
+    from the config or derived from maturity_date (see _resolve_maturity)
+    -- so every consumer can read it unconditionally either way."""
 
     name: str
     maturity_years: float
@@ -129,14 +89,8 @@ class Bond:
 
 
 def _resolve_valuation_date(valuation_date: str | date | None) -> date:
-    """Normalize the valuation_date argument to a date.
-
-    None -> today (the common, non-reproducible case: "what would this
-    portfolio's maturities be as of right now"). A date is passed through.
-    A str is parsed as ISO "YYYY-MM-DD" -- the same format maturity_date /
-    issue_date use, so a caller pinning a validation run can pass the same
-    kind of string everywhere.
-    """
+    """Normalize the valuation_date argument to a date: None -> today, a
+    date is passed through, a str is parsed as ISO "YYYY-MM-DD"."""
     if valuation_date is None:
         return date.today()
     if isinstance(valuation_date, date):
@@ -152,12 +106,10 @@ def _years_between(start: date, end: date) -> float:
 def _resolve_maturity(
     raw: dict, *, name: str, as_of: date, source: Path, index: int
 ) -> tuple[float, str | None]:
-    """Resolve one bond's maturity_years, per the rules in the module docstring.
-
-    Returns (maturity_years, maturity_date_str_or_None). maturity_date wins
-    when present -- its derived years is what's returned -- because it is
-    the more authoritative form (an actual redemption date) once real-issue
-    data is in play; maturity_years is then just a consistency check on it.
+    """Resolve one bond's maturity_years, per the rules in the module
+    docstring. Returns (maturity_years, maturity_date_str_or_None) --
+    maturity_date wins when present (the more authoritative form);
+    maturity_years then just serves as a consistency check on it.
     """
     has_years = raw.get("maturity_years") is not None
     has_date = raw.get("maturity_date") is not None
@@ -210,25 +162,19 @@ def load_portfolio(
 
     Parameters
     ----------
-    path : optional path to an alternative portfolio JSON file, in the same
-        shape as config/portfolio.json (a top-level "bonds" list of objects
-        with name/coupon_rate/face_value/weight plus a maturity spec).
-        Defaults to DEFAULT_PORTFOLIO_PATH. This is the hook tests and the
-        Phase 8 dashboard use to supply their own portfolio without touching
-        the default file or this module.
-    valuation_date : optional date (or ISO "YYYY-MM-DD" string) used to turn
-        a bond's maturity_date into a remaining-years figure. Defaults to
-        today. Pass an explicit date for a reproducible run -- the same
-        reason validation runs pin `prefer_live=False` on the curve loader
-        rather than depending on "whatever today is."
+    path : optional path to an alternative portfolio JSON file (same shape
+        as config/portfolio.json). Defaults to DEFAULT_PORTFOLIO_PATH --
+        this is the hook a test, or a future dashboard, uses to supply its
+        own portfolio without touching the default file.
+    valuation_date : optional date (or ISO string) that a maturity_date is
+        measured from. Defaults to today; pass an explicit date for a
+        reproducible run.
 
     Raises
     ------
-    ValueError : the file is missing required fields, or fails validation
-        (see _resolve_maturity and _validate_portfolio) -- weights not
-        summing to 1.0, a negative face value, a non-positive maturity, an
-        implausible coupon rate, an unparseable or inconsistent maturity
-        spec, or a malformed optional date field.
+    ValueError : missing required fields or failed validation -- weights
+        not summing to 1.0, a negative face value, a non-positive
+        maturity, an implausible coupon, or an inconsistent maturity spec.
     """
     portfolio_path = Path(path) if path is not None else DEFAULT_PORTFOLIO_PATH
     as_of = _resolve_valuation_date(valuation_date)
@@ -284,14 +230,10 @@ def load_portfolio(
 
 def _validate_portfolio(bonds: list[Bond], source: Path) -> None:
     """Raise ValueError unless bonds form a plausible, internally-consistent
-    portfolio. Structural checks (positive face value, positive maturity,
-    plausible coupon, well-formed optional fields) run per bond; the
-    weight-sum check runs once, across the whole portfolio, since it is only
-    meaningful in aggregate.
-
-    maturity_date, if present, was already parsed by _resolve_maturity
-    (which runs before this, in load_portfolio) -- it is not re-parsed here.
-    issue_date is validated here since nothing upstream needed to touch it."""
+    portfolio. Per-bond structural checks run first; the weight-sum check
+    runs once, across the whole list, since it's only meaningful in
+    aggregate. maturity_date was already parsed by _resolve_maturity, so
+    it isn't re-parsed here; issue_date is checked here instead."""
     if not bonds:
         raise ValueError(f"{source}: portfolio is empty")
 
