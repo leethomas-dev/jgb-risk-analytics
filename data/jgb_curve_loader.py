@@ -143,6 +143,20 @@ def _snapshot_curve_dataframe() -> pd.DataFrame:
     return _standardize_curve(rows)
 
 
+def _find_mof_header_row_index(lines: list[str]) -> int | None:
+    """Locate the "Date,1Y,2Y,..." header row inside a raw MOF CSV.
+
+    Both the current-curve file and the historical file
+    (data/jgb_curve_history_loader.py) share this exact layout: a title
+    line first (e.g. "Interest Rate (August 2026),,,..." or, for the
+    historical file, just "Interest Rate,,,..."), then the real header,
+    then data rows, then a stray footer note. Searching by content rather
+    than assuming a fixed line number survives either title format.
+    Returns None if no such row is found.
+    """
+    return next((i for i, line in enumerate(lines) if line.startswith("Date,")), None)
+
+
 def _fetch_live_curve() -> pd.DataFrame:
     """Pull the latest published JGB curve directly from MOF.
 
@@ -152,16 +166,10 @@ def _fetch_live_curve() -> pd.DataFrame:
     response = requests.get(MOF_CSV_URL, timeout=LIVE_REQUEST_TIMEOUT_SECONDS)
     response.raise_for_status()
 
-    # MOF's CSV starts with a title line (e.g. "Interest Rate (August
-    # 2026),,,...") before the real header row ("Date,1Y,2Y,...,40Y"), and
-    # ends with a stray footer note. Find the header row explicitly rather
-    # than assuming it's line 0.
     from io import StringIO
 
     lines = response.text.splitlines()
-    header_idx = next(
-        (i for i, line in enumerate(lines) if line.startswith("Date,")), None
-    )
+    header_idx = _find_mof_header_row_index(lines)
     if header_idx is None:
         raise ValueError("Unexpected MOF CSV format: no 'Date,...' header row found")
 

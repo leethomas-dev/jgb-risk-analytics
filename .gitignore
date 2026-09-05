@@ -225,3 +225,12 @@ outputs/*.png
 # never source. The .tmp glob catches an atomic-write temp file left by a crash.
 data/_jgb_curve_cache.json
 data/._jgb_cache_*.tmp
+
+# Project-specific: machine-local write-through cache of the last good live JGB
+# HISTORICAL pull (data/jgb_curve_history_loader.py). Same treatment as above --
+# data/jgb_curve_history_snapshot.csv (no leading underscore) is the committed
+# fallback and is NOT covered by this pattern.
+data/_jgb_curve_history_cache.csv
+data/_jgb_curve_history_cache.meta.json
+data/._jgb_history_cache_*.tmp
+data/._jgb_history_meta_*.tmp
