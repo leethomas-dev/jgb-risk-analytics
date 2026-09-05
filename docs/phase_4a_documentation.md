@@ -126,6 +126,21 @@ costs nine of fifteen tenors, because the intersection has to hold across
 52 years. This is disclosed, not hidden — but it's also why Phase 4B does
 not default to `lookback_years=None` (see its own doc).
 
+A pairwise-complete covariance approach — letting a downstream consumer
+use a tenor's *partial* history directly instead of this policy dropping
+it for the whole window — was built, tested, and deliberately not kept:
+the default window already runs at ≈32 observations per tenor (485 daily
+changes across 15 tenors), so the sample was never actually short enough
+for pairwise-complete's core benefit to matter. An EM-based imputation
+approach — which would fix pairwise-complete's own validity gap (its
+matrix isn't automatically positive-semi-definite) — was considered and
+rejected on a more basic ground: it solves that gap by filling in a real
+number for every missing cell, which is exactly what this section's
+policy exists to refuse. Both are covered in full in
+`docs/phase_4b_documentation.md`'s "what would change this design"
+section. This loader's contract stays the simpler one: complete tenors
+only, nothing partial ever leaves this function.
+
 ### 1.4 Cache and snapshot: same live → cache → snapshot pattern as Phase 1
 
 - **Cache** (`data/_jgb_curve_history_cache.csv` + a small

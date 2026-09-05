@@ -24,6 +24,7 @@ import pytest
 from data.jgb_curve_history_loader import (
     MAX_PLAUSIBLE_YIELD_HISTORY,
     MIN_PLAUSIBLE_YIELD_HISTORY,
+    _parse_mof_history_csv,
     load_jgb_curve_history,
 )
 
@@ -168,3 +169,53 @@ def test_dropped_and_retained_tenors_partition_the_original_grid():
     assert retained & dropped == set()
     assert retained | dropped == set(ALL_15_TENORS)
     assert retained == set(df.columns)
+
+
+# --------------------------------------------------------------------------
+# Duplicate-date handling in the shared parser -- resolved (keep last), and
+# reported rather than silently dropped, the same "nothing silent" standard
+# the ragged-tenor policy holds itself to. Never observed against a real MOF
+# pull, so exercised here against a small synthetic file built to trigger it.
+# --------------------------------------------------------------------------
+
+
+def _synthetic_mof_csv(n_rows: int = 260, duplicate_last_date: bool = False) -> str:
+    """A minimal but structurally valid MOF-style CSV: a title line, the
+    real 'Date,...' header, then n_rows of business-day rows across 5
+    tenors (MIN_TENORS_FOR_VALID_PULL) -- enough to clear
+    MIN_ROWS_FOR_VALID_PULL. If duplicate_last_date, the final date is
+    repeated once more with different values, to see which one survives."""
+    dates = pd.bdate_range("2020-01-01", periods=n_rows)
+    lines = ["Interest Rate (synthetic),,,,,", "Date,1Y,2Y,3Y,4Y,5Y"]
+    for i, d in enumerate(dates):
+        row_values = [f"{0.5 + 0.001 * i:.3f}"] * 5
+        lines.append(f"{d.strftime('%Y/%m/%d')}," + ",".join(row_values))
+    if duplicate_last_date:
+        # Same date as the last row, but with distinguishable values.
+        lines.append(f"{dates[-1].strftime('%Y/%m/%d')}," + ",".join(["9.999"] * 5))
+    return "\n".join(lines)
+
+
+def test_duplicate_date_in_raw_csv_keeps_the_last_occurrence():
+    text = _synthetic_mof_csv(duplicate_last_date=True)
+    df = _parse_mof_history_csv(text)
+    assert not df.index.duplicated().any()
+    assert df.loc[df.index.max()].iloc[0] == pytest.approx(9.999 / 100.0)
+
+
+def test_duplicate_date_is_logged_when_verbose(capsys):
+    text = _synthetic_mof_csv(duplicate_last_date=True)
+    _parse_mof_history_csv(text, verbose=True)
+    assert "duplicate date" in capsys.readouterr().err.lower()
+
+
+def test_no_duplicate_log_when_none_present(capsys):
+    text = _synthetic_mof_csv(duplicate_last_date=False)
+    _parse_mof_history_csv(text, verbose=True)
+    assert "duplicate date" not in capsys.readouterr().err.lower()
+
+
+def test_duplicate_date_is_silent_when_not_verbose(capsys):
+    text = _synthetic_mof_csv(duplicate_last_date=True)
+    _parse_mof_history_csv(text, verbose=False)
+    assert capsys.readouterr().err == ""

@@ -132,13 +132,20 @@ MIN_ROWS_FOR_VALID_PULL = 250
 _DAYS_PER_YEAR = 365.25
 
 
-def _parse_mof_history_csv(text: str) -> pd.DataFrame:
+def _parse_mof_history_csv(text: str, *, verbose: bool = False) -> pd.DataFrame:
     """Parse MOF's historical CSV text into a wide, RAW (NaN-containing)
     decimal-yield DataFrame: DatetimeIndex (ascending, name "date"),
     columns = every recognized tenor (float years, ascending, name
     "maturity_years"). A cell is NaN wherever MOF's own file has "-"
     (not yet published for that tenor on that date). Shared by all three
     tiers (see module docstring) so there is exactly one parsing path.
+
+    A duplicate date in the raw file is resolved by keeping the last
+    occurrence -- logged (verbose=True) rather than silently dropped, the
+    same "nothing silent" standard the ragged-tenor policy holds itself to
+    (module docstring); in practice this has never fired against a real
+    MOF pull, but a silent dedup is exactly the kind of thing that should
+    be visible if it ever does.
 
     Raises ValueError on any structural failure -- no header row, no
     'Date' column, no parseable date rows, or too few usable tenors/rows
@@ -176,6 +183,13 @@ def _parse_mof_history_csv(text: str) -> pd.DataFrame:
     index = pd.DatetimeIndex(parsed_dates.loc[data_rows.index], name="date")
     df = pd.DataFrame(tenor_data, index=index)
     df = df.sort_index()
+    n_duplicates = int(df.index.duplicated().sum())
+    if n_duplicates and verbose:
+        print(
+            f"[jgb_curve_history_loader] Found {n_duplicates} duplicate date(s) in the "
+            "raw MOF file; keeping each date's LAST occurrence and dropping the rest.",
+            file=sys.stderr,
+        )
     df = df.loc[~df.index.duplicated(keep="last")]
     df = df.reindex(sorted(df.columns), axis=1)
     df.columns.name = "maturity_years"
@@ -265,12 +279,12 @@ def _write_history_cache(raw_text: str) -> None:
         raise
 
 
-def _read_history_cache() -> tuple[pd.DataFrame, str, int]:
+def _read_history_cache(*, verbose: bool) -> tuple[pd.DataFrame, str, int]:
     """Return (raw history df, fetched_utc, age_days) from the cache.
     Raises on a missing / unreadable / malformed / implausible cache."""
     with open(HISTORY_CACHE_PATH) as fh:
         raw_text = fh.read()
-    df = _parse_mof_history_csv(raw_text)
+    df = _parse_mof_history_csv(raw_text, verbose=verbose)
     _validate_history_df_raw(df)
 
     with open(HISTORY_CACHE_META_PATH) as fh:
@@ -283,7 +297,7 @@ def _read_history_cache() -> tuple[pd.DataFrame, str, int]:
     return df, fetched_utc, age_days
 
 
-def _read_snapshot_history() -> pd.DataFrame:
+def _read_snapshot_history(*, verbose: bool) -> pd.DataFrame:
     """Load the committed snapshot file through the SAME parser used for
     a live pull -- the snapshot is a real MOF file saved unmodified, not a
     separately-encoded format, so there is nothing snapshot-specific to
@@ -291,7 +305,7 @@ def _read_snapshot_history() -> pd.DataFrame:
     §1.2's "served unmodified" reasoning, applied to history)."""
     with open(HISTORY_SNAPSHOT_PATH) as fh:
         raw_text = fh.read()
-    df = _parse_mof_history_csv(raw_text)
+    df = _parse_mof_history_csv(raw_text, verbose=verbose)
     _validate_history_df_raw(df)
     return df
 
@@ -305,7 +319,7 @@ def _load_raw_history(*, prefer_live: bool, verbose: bool) -> tuple[pd.DataFrame
     if prefer_live:
         try:
             raw_text = _fetch_live_history_text()
-            live_df = _parse_mof_history_csv(raw_text)
+            live_df = _parse_mof_history_csv(raw_text, verbose=verbose)
             _validate_history_df_raw(live_df)
         except Exception as exc:  # noqa: BLE001 - deliberate catch-all fallback
             if verbose:
@@ -335,7 +349,7 @@ def _load_raw_history(*, prefer_live: bool, verbose: bool) -> tuple[pd.DataFrame
 
         if HISTORY_CACHE_PATH.exists() and HISTORY_CACHE_META_PATH.exists():
             try:
-                cached_df, fetched_utc, age_days = _read_history_cache()
+                cached_df, fetched_utc, age_days = _read_history_cache(verbose=verbose)
             except Exception as exc:  # noqa: BLE001 - bad cache -> fall through to snapshot
                 if verbose:
                     print(
@@ -353,7 +367,7 @@ def _load_raw_history(*, prefer_live: bool, verbose: bool) -> tuple[pd.DataFrame
                     )
                 return cached_df, "cache"
 
-    snapshot_df = _read_snapshot_history()
+    snapshot_df = _read_snapshot_history(verbose=verbose)
     if verbose:
         why = "no live pull and no usable cache" if prefer_live else "prefer_live=False"
         print(
