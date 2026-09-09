@@ -1,5 +1,17 @@
 /# Phase 4B Documentation — `models/pca.py`
 
+**Related, added later (Phase 4.5B, not this phase):**
+`models/diebold_li.py` fits a dynamic (fixed-tau) Nelson-Siegel model
+across the same kind of historical window used here and compares its
+beta time series against this module's own component time series — see
+[`phase_4_5b_dl_documentation.md`](phase_4_5b_dl_documentation.md). It's
+a Phase 4.5B deliverable (it extends that phase's cross-sectional
+Nelson-Siegel/Svensson fitting), not a Phase 4B one, even though it reads
+this module's output for its own comparison — kept as its own doc rather
+than folded into either this one or `phase_4_5b_documentation.md`
+(substantial new content, same one-doc-per-deliverable convention as
+Phase 4.5A/4.5B).
+
 ## In plain English
 
 The JGB curve doesn't move as 15 independent numbers each day — when

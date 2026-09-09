@@ -451,6 +451,58 @@ def coupon_effect_sensitivity(
     return pd.DataFrame(rows)
 
 
+def bootstrap_zero_curve_history(
+    history: pd.DataFrame,
+    freq: int = DEFAULT_BOOTSTRAP_FREQ,
+) -> pd.DataFrame:
+    """Bootstrap a zero curve for EVERY date in a curve history (e.g. from
+    data.jgb_curve_history_loader.load_jgb_curve_history), one date at a
+    time -- added for Phase 4.5B's Diebold-Li dynamic Nelson-Siegel module
+    (models/diebold_li.py), which needs a date-indexed time series of zero
+    rates, not just a single day's.
+
+    Unlike bootstrap_zero_curve's own default output (a full semiannual
+    grid, ~80 points), this returns rates ONLY at `history`'s own tenor
+    columns -- run once per date, filtered back down to those same
+    columns. Two reasons: the historical loader's tenors are always whole
+    years (docs/phase_4a_documentation.md's tenor table starts at 1Y), so
+    every one lands exactly on the semiannual bootstrap grid with no
+    interpolation error in the filtering itself; and for a batch, date-by-
+    date operation across potentially thousands of rows, generating ~65
+    extra interpolated points per date that add no independent
+    information (docs/phase_4_5b_documentation.md §3 makes the same point
+    for the single-date case) is pure wasted computation.
+
+    Applies bootstrap_zero_curve's own par-curve-treatment simplification
+    once per date -- every date in the result inherits the same measured
+    coupon-effect caveat (docs/phase_4_5a_documentation.md §1/§5), not
+    just "today."
+
+    Parameters
+    ----------
+    history : date-indexed DataFrame, one column per tenor (float years),
+        decimal yields, no missing values -- load_jgb_curve_history's own
+        output contract. Respects whatever tenor set that call's
+        ragged-tenor policy retained; nothing here assumes a fixed tenor
+        list (docs/phase_4a_documentation.md §1.3).
+    freq : passed through to bootstrap_zero_curve for every date.
+
+    Returns
+    -------
+    pd.DataFrame, same shape and index as `history` (dates x tenors),
+    holding each date's bootstrapped zero rate at each tenor instead of
+    that date's (par-treated) input yield.
+    """
+    tenors = history.columns.to_numpy(dtype=float)
+    zero_rows = []
+    for _, row in history.iterrows():
+        par_curve = pd.DataFrame({"maturity_years": tenors, "yield": row.to_numpy(dtype=float)})
+        zc = bootstrap_zero_curve(par_curve, freq=freq).set_index("maturity_years")
+        zero_rows.append(zc.loc[tenors, "zero_rate"].to_numpy())
+
+    return pd.DataFrame(np.array(zero_rows), index=history.index, columns=history.columns)
+
+
 if __name__ == "__main__":
     curve = load_jgb_curve()
     zero_curve = bootstrap_zero_curve(curve)

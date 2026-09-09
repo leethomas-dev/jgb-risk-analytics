@@ -18,6 +18,8 @@ model validator can review a decision without re-deriving it from the diff.
 | 4B    | [`phase_4b_documentation.md`](phase_4b_documentation.md) | `models/pca.py` — `compute_curve_pca()`, PCA risk factors (level/slope/curvature) fitted on real JGB curve-change history | Done   |
 | 4C    | [`phase_4c_documentation.md`](phase_4c_documentation.md) | `models/factor_exposure.py` — `compute_portfolio_factor_exposure()`, the portfolio's %/currency P&L exposure to each PCA factor | Done   |
 | 4.5A  | [`phase_4_5a_documentation.md`](phase_4_5a_documentation.md) | `models/bootstrap.py` — `bootstrap_zero_curve()`, a zero-coupon (spot) discount curve bootstrapped from the observed par curve | Done   |
+| 4.5B  | [`phase_4_5b_documentation.md`](phase_4_5b_documentation.md) | `models/curve_fitting.py` — `fit_nelson_siegel()` / `fit_svensson()`, parametric (4- and 6-parameter) fits to the bootstrapped zero curve | Done   |
+| 4.5B-DL | [`phase_4_5b_dl_documentation.md`](phase_4_5b_dl_documentation.md) | `models/diebold_li.py` — `fit_diebold_li_history()`, fixed-tau dynamic Nelson-Siegel beta time series, compared against Phase 4B's PCA factors | Done   |
 
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded
