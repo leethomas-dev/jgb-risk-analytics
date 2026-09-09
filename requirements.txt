@@ -1,3 +1,31 @@
+# Analytics (data/, models/, config/) and the Streamlit dashboard (app.py)
+# share this one file -- Streamlit Community Cloud installs from it
+# directly on deploy, so a missing entry is a crash there, not just a
+# local inconvenience. Audited directly against this repo's actual
+# top-level imports (excluding tests/, which Streamlit Cloud never runs),
+# not guessed. numpy is listed explicitly even though pandas already pulls
+# it in transitively, since it's imported directly by name throughout
+# models/ (PCA's SVD, curve interpolation, bump-and-reprice sensitivities)
+# -- an explicit dependency shouldn't rely on being someone else's.
 pandas>=2.0
+numpy>=1.24
 requests>=2.30
 matplotlib>=3.8
+
+# Phase 4.7 dashboard only.
+streamlit>=1.63
+plotly>=7.0
+
+# MEMORY (Streamlit Community Cloud free tier: ~1GB RAM). Measured
+# directly, not assumed: streamlit+plotly+pandas+numpy+matplotlib import
+# overhead alone is ~150MB; running the full dashboard pipeline (current
+# curve, PCA, bootstrap, NS/Svensson fits) against the default 2-year PCA
+# window peaks at ~186MB total. Widening that window to the FULL 52-year
+# history (13,290 rows) barely moves it, ~185MB -- the curve-history
+# matrix itself is small regardless of window length; it's the library
+# imports that dominate. So PCA_LOOKBACK_YEARS (app.py, env var
+# JGB_DASHBOARD_PCA_LOOKBACK_YEARS) is kept configurable per the project's
+# own convention, but isn't actually the load-bearing memory lever a
+# "PCA over history is the memory risk" assumption would suggest -- see
+# docs/phase_4_7_documentation.md for the full measurement and the caveat
+# on what it doesn't cover (many concurrent user sessions).
