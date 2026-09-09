@@ -21,6 +21,7 @@ model validator can review a decision without re-deriving it from the diff.
 | 4.5B  | [`phase_4_5b_documentation.md`](phase_4_5b_documentation.md) | `models/curve_fitting.py` — `fit_nelson_siegel()` / `fit_svensson()`, parametric (4- and 6-parameter) fits to the bootstrapped zero curve | Done   |
 | 4.5B-DL | [`phase_4_5b_dl_documentation.md`](phase_4_5b_dl_documentation.md) | `models/diebold_li.py` — `fit_diebold_li_history()`, fixed-tau dynamic Nelson-Siegel beta time series, compared against Phase 4B's PCA factors | Done   |
 | 4.5C  | [`phase_4_5c_documentation.md`](phase_4_5c_documentation.md) | `models/bond_pricing.py`/`key_rate_duration.py` (extended) + `models/zero_curve_impact.py` — optional zero-curve discounting, its quantified par-vs-zero pricing impact, and NS-vs-PCA loading comparison | Done   |
+| 4.6A  | [`phase_4_6a_documentation.md`](phase_4_6a_documentation.md) | `models/day_count.py` (new) + `models/bond_pricing.py` (extended) — `accrued_interest()` / `dirty_price()`, settlement-date-aware clean/dirty pricing on an Actual/365 day count | Done   |
 
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded

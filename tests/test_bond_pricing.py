@@ -14,13 +14,24 @@ All curve loading uses prefer_live=False for determinism.
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from config.portfolio_loader import load_portfolio
 from data.jgb_curve_loader import _MOF_TENOR_COLUMNS, load_jgb_curve
-from models.bond_pricing import curve_yield_at, price_bond, price_portfolio
+from models.bond_pricing import (
+    _coupon_boundaries,
+    accrued_interest,
+    accrued_interest_portfolio,
+    curve_yield_at,
+    dirty_price,
+    dirty_price_portfolio,
+    price_bond,
+    price_portfolio,
+)
 
 
 def _flat_curve(y: float, tenors=(0.5, 1, 2, 5, 10, 20, 30, 40)) -> pd.DataFrame:
@@ -388,3 +399,175 @@ def test_portfolio_weighted_price_is_computable_and_plausible():
     results = price_portfolio(portfolio, curve)
     weighted_price = float((results["weight"] * results["price"]).sum())
     assert 40.0 < weighted_price < 150.0
+
+
+# --------------------------------------------------------------------------
+# Settlement, day count, accrued interest, clean/dirty price (Phase 4.6A)
+# --------------------------------------------------------------------------
+
+_VAL_DATE = date(2026, 1, 1)  # a fixed, non-leap valuation date for determinism
+
+
+def test_accrued_is_zero_at_the_default_settlement_date():
+    # settlement_date defaults to valuation_date -- the phase brief's own
+    # default -- which is exactly a coupon date by construction (module
+    # docstring), so nothing has accrued yet.
+    ai = accrued_interest(100.0, 0.04, 2.0, valuation_date=_VAL_DATE)
+    assert ai == 0.0
+
+
+def test_accrued_is_zero_exactly_on_a_later_coupon_date():
+    # Landing exactly on ANY coupon date -- not just the first -- resets
+    # accrued to zero (half-open period convention, accrued_interest()'s
+    # own docstring).
+    boundaries = _coupon_boundaries(2.0, _VAL_DATE, freq=2)
+    third_coupon_date = boundaries[2]
+    ai = accrued_interest(100.0, 0.04, 2.0, valuation_date=_VAL_DATE, settlement_date=third_coupon_date)
+    assert ai == 0.0
+
+
+def test_accrued_is_small_and_positive_immediately_after_a_coupon_date():
+    boundaries = _coupon_boundaries(2.0, _VAL_DATE, freq=2)
+    day_after = boundaries[1] + timedelta(days=1)
+    ai = accrued_interest(100.0, 0.04, 2.0, valuation_date=_VAL_DATE, settlement_date=day_after)
+    coupon_per_period = 100.0 * 0.04 / 2
+    assert 0.0 < ai < coupon_per_period
+
+
+def test_accrued_grows_monotonically_through_a_coupon_period():
+    boundaries = _coupon_boundaries(2.0, _VAL_DATE, freq=2)
+    period_start, period_end = boundaries[0], boundaries[1]
+    days_in_period = (period_end - period_start).days
+    offsets = [1, days_in_period // 4, days_in_period // 2, days_in_period - 1]
+    accrued_values = [
+        accrued_interest(
+            100.0, 0.04, 2.0, valuation_date=_VAL_DATE,
+            settlement_date=period_start + timedelta(days=d),
+        )
+        for d in offsets
+    ]
+    assert accrued_values == sorted(accrued_values)
+    assert len(set(accrued_values)) == len(accrued_values)  # strictly increasing, not just non-decreasing
+
+
+def test_accrued_before_the_first_coupon_of_a_newly_issued_bond():
+    # Settlement lands in period 0 -- before the bond's very first coupon
+    # -- handled by the same general period-finding logic as any other
+    # period (accrued_interest()'s own docstring), not a special case.
+    boundaries = _coupon_boundaries(2.0, _VAL_DATE, freq=2)
+    mid_first_period = _VAL_DATE + timedelta(days=30)
+    assert _VAL_DATE < mid_first_period < boundaries[1]
+    ai = accrued_interest(100.0, 0.04, 2.0, valuation_date=_VAL_DATE, settlement_date=mid_first_period)
+    assert 0.0 < ai < 100.0 * 0.04 / 2
+
+
+def test_accrued_at_maturity_date_is_zero():
+    boundaries = _coupon_boundaries(2.0, _VAL_DATE, freq=2)
+    ai = accrued_interest(100.0, 0.04, 2.0, valuation_date=_VAL_DATE, settlement_date=boundaries[-1])
+    assert ai == 0.0
+
+
+def test_accrued_rejects_settlement_before_valuation_date():
+    with pytest.raises(ValueError, match="precedes"):
+        accrued_interest(
+            100.0, 0.04, 2.0,
+            valuation_date=_VAL_DATE,
+            settlement_date=_VAL_DATE - timedelta(days=1),
+        )
+
+
+def test_accrued_rejects_settlement_after_maturity():
+    boundaries = _coupon_boundaries(2.0, _VAL_DATE, freq=2)
+    with pytest.raises(ValueError, match="after the bond's maturity date"):
+        accrued_interest(
+            100.0, 0.04, 2.0,
+            valuation_date=_VAL_DATE,
+            settlement_date=boundaries[-1] + timedelta(days=1),
+        )
+
+
+def test_accrued_interest_day_counting_reflects_the_extra_day_in_a_leap_year():
+    # 2024 IS a leap year. A single-period (6-month) bond valued on
+    # 2024-01-01 and settled on 2024-03-01 spans Feb 29 -- the elapsed-days
+    # count must include that extra day. Hand-computed via Python's own
+    # date arithmetic (an independent computation, not a re-derivation of
+    # accrued_interest's own logic) and cross-checked against the
+    # documented ACT/365 formula (coupon_per_period x days_elapsed /
+    # days_in_period).
+    valuation, settlement = date(2024, 1, 1), date(2024, 3, 1)
+    hand_computed_days_elapsed = (settlement - valuation).days
+    assert hand_computed_days_elapsed == 60  # 31 (Jan) + 29 (Feb, leap year)
+
+    face, coupon, maturity, freq = 100.0, 0.04, 0.5, 2
+    boundaries = _coupon_boundaries(maturity, valuation, freq)
+    days_in_period = (boundaries[1] - boundaries[0]).days
+
+    ai = accrued_interest(face, coupon, maturity, freq=freq, valuation_date=valuation, settlement_date=settlement)
+    expected = (face * coupon / freq) * (hand_computed_days_elapsed / days_in_period)
+    assert ai == pytest.approx(expected)
+
+
+def test_dirty_minus_clean_equals_accrued():
+    curve = load_jgb_curve(prefer_live=False)
+    boundaries = _coupon_boundaries(10.0, _VAL_DATE, freq=2)
+    settlement = boundaries[0] + timedelta(days=45)
+
+    clean = price_bond(100.0, 0.025, 10.0, curve)
+    ai = accrued_interest(100.0, 0.025, 10.0, valuation_date=_VAL_DATE, settlement_date=settlement)
+    dirty = dirty_price(
+        100.0, 0.025, 10.0, curve, valuation_date=_VAL_DATE, settlement_date=settlement
+    )
+    assert dirty - clean == pytest.approx(ai)
+
+
+def test_dirty_price_equals_clean_price_at_the_default_settlement_date():
+    # No settlement_date passed -> reproduces price_bond's own clean price
+    # exactly, since accrued is 0 at the default (module docstring).
+    curve = load_jgb_curve(prefer_live=False)
+    clean = price_bond(100.0, 0.025, 10.0, curve)
+    dirty = dirty_price(100.0, 0.025, 10.0, curve)
+    assert dirty == pytest.approx(clean)
+
+
+def test_accrued_interest_rejects_non_positive_inputs_like_price_bond_does():
+    with pytest.raises(ValueError, match="face_value"):
+        accrued_interest(-100.0, 0.02, 10.0)
+    with pytest.raises(ValueError, match="maturity_years"):
+        accrued_interest(100.0, 0.02, 0.0)
+
+
+# --------------------------------------------------------------------------
+# Portfolio-level accrued interest and dirty price
+# --------------------------------------------------------------------------
+
+
+def test_accrued_interest_portfolio_returns_one_row_per_bond_in_order():
+    portfolio = load_portfolio()
+    settlement = date.today() + timedelta(days=10)
+    results = accrued_interest_portfolio(portfolio, settlement_date=settlement)
+    assert list(results["name"]) == [b.name for b in portfolio]
+    assert (results["accrued_interest"] >= 0.0).all()
+
+
+def test_accrued_interest_portfolio_matches_accrued_interest_per_row():
+    portfolio = load_portfolio()
+    settlement = date.today() + timedelta(days=10)
+    results = accrued_interest_portfolio(portfolio, settlement_date=settlement)
+    for bond, ai in zip(portfolio, results["accrued_interest"]):
+        expected = accrued_interest(
+            bond.face_value, bond.coupon_rate, bond.maturity_years, settlement_date=settlement
+        )
+        assert ai == pytest.approx(expected)
+
+
+def test_dirty_price_portfolio_equals_clean_plus_accrued_per_row():
+    curve = load_jgb_curve(prefer_live=False)
+    portfolio = load_portfolio()
+    settlement = date.today() + timedelta(days=10)
+    results = dirty_price_portfolio(portfolio, curve, settlement_date=settlement)
+    assert list(results["name"]) == [b.name for b in portfolio]
+    pd.testing.assert_series_equal(
+        results["dirty_price"],
+        results["clean_price"] + results["accrued_interest"],
+        check_names=False,
+    )
