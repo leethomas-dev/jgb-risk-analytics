@@ -16,6 +16,7 @@ model validator can review a decision without re-deriving it from the diff.
 | 3C    | [`phase_3c_documentation.md`](phase_3c_documentation.md) | `models/ultra_long_profile.py` — `compute_ultra_long_profile()` / `plot_ultra_long_profile()`, the 20Y+ segment's share of portfolio risk | Done   |
 | 4A    | [`phase_4a_documentation.md`](phase_4a_documentation.md) | `data/jgb_curve_history_loader.py` — `load_jgb_curve_history()`, a date-indexed time series of JGB curves with an explicit ragged-tenor policy | Done   |
 | 4B    | [`phase_4b_documentation.md`](phase_4b_documentation.md) | `models/pca.py` — `compute_curve_pca()`, PCA risk factors (level/slope/curvature) fitted on real JGB curve-change history | Done   |
+| 4C    | [`phase_4c_documentation.md`](phase_4c_documentation.md) | `models/factor_exposure.py` — `compute_portfolio_factor_exposure()`, the portfolio's %/currency P&L exposure to each PCA factor | Done   |
 
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded
