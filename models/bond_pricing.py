@@ -107,7 +107,7 @@ def curve_yield_at(curve: pd.DataFrame, maturity_years):
     return np.interp(maturity_years, tenors, yields, left=yields[0], right=yields[-1])
 
 
-def _cash_flow_schedule(maturity_years: float, freq: int) -> tuple[int, np.ndarray]:
+def cash_flow_schedule(maturity_years: float, freq: int) -> tuple[int, np.ndarray]:
     """The coupon schedule price_bond itself prices against: n_periods
     payments, spaced 1/freq years apart, counted BACKWARD from maturity so
     the final one lands exactly there (module docstring). Factored out of
@@ -172,7 +172,7 @@ def price_bond(
     if curve.empty:
         raise ValueError("curve is empty -- cannot price against it")
 
-    n_periods, cash_flow_times = _cash_flow_schedule(maturity_years, freq)
+    n_periods, cash_flow_times = cash_flow_schedule(maturity_years, freq)
 
     coupon_payment = face_value * coupon_rate / freq
     cash_flows = np.full(n_periods, coupon_payment, dtype=float)
@@ -247,7 +247,7 @@ def _coupon_boundaries(maturity_years: float, valuation_date: date, freq: int) -
     for i >= 1 is the calendar date of price_bond's i-th cash flow;
     boundaries[-1] is the bond's maturity date.
 
-    Built from the EXACT SAME _cash_flow_schedule() price_bond itself uses
+    Built from the EXACT SAME cash_flow_schedule() price_bond itself uses
     -- accrued interest is always asking about the periods a bond is
     actually priced on, never a second, independently-derived calendar.
 
@@ -262,7 +262,7 @@ def _coupon_boundaries(maturity_years: float, valuation_date: date, freq: int) -
     purpose (there are no real per-bond calendar dates to be more precise
     than, since the illustrative portfolio only ever gives maturity_years).
     """
-    _, cash_flow_times = _cash_flow_schedule(maturity_years, freq)
+    _, cash_flow_times = cash_flow_schedule(maturity_years, freq)
     return [valuation_date] + [
         valuation_date + timedelta(days=round(t * DAYS_PER_YEAR)) for t in cash_flow_times
     ]
