@@ -136,12 +136,14 @@ more rigorously derived one. Worth restating here specifically, since a
 currency figure reads as more concrete/tradeable than a percentage one,
 inviting even more confidence than it should carry.
 
-**Update (Phase 4.5):** a bootstrapped zero curve now exists
-(`docs/phase_4_5a_documentation.md`) but is not yet wired into
-`price_bond`'s default path — see the same note in
-`docs/phase_2b_documentation.md` §3.2. This limitation is unchanged for
-DV01 until Phase 4.5C integrates the zero curve as an optional
-discounting basis and quantifies the resulting DV01 difference.
+**Resolved, in part (Phase 4.5).** DV01 (a thin unit conversion over
+`price_bond`/`effective_duration_bond`, module docstring) inherited
+zero-curve support automatically once those did, with no code changes of
+its own — pass a bootstrapped zero curve instead of a par curve. **The
+par-curve basis remains the default.** See the same note in
+`docs/phase_2b_documentation.md` §3.2 and
+`docs/phase_4_5c_documentation.md` §1/§2 for the mechanism and the
+quantified DV01 difference (up to ~14% at the 40Y bond).
 
 **3.2 DV01's tenor set isn't fixed** — same as every other module; a
 DV01 table from one data source isn't directly comparable, column for

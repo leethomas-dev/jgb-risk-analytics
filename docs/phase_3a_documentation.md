@@ -139,12 +139,15 @@ number invites a sharper reading than a price does. Read any KRD figure
 in this project as the sensitivity of that same approximation, not of a
 theoretically exact rate.
 
-**Update (Phase 4.5):** a bootstrapped zero curve now exists
-(`docs/phase_4_5a_documentation.md`) but is not yet wired into
-`price_bond`'s default path — see the same note in
-`docs/phase_2b_documentation.md` §3.2. This limitation is unchanged for
-KRD until Phase 4.5C integrates the zero curve as an optional discounting
-basis.
+**Resolved, in part (Phase 4.5).** `key_rate_duration_bond` /
+`effective_duration_bond` now work against a bootstrapped zero curve
+directly (pass one instead of a par curve — auto-detected, same as
+`price_bond`) — see the same note in `docs/phase_2b_documentation.md`
+§3.2 and `docs/phase_4_5c_documentation.md` §1. **The par-curve basis
+remains the default.** The par-vs-zero KRD/duration difference is
+quantified in `docs/phase_4_5c_documentation.md` §2 — small at the front
+end, large at the long end (e.g. the 40Y bond's effective duration
+shifts by more than a year).
 
 **3.2 KRD's tenor set isn't fixed.** Same as everywhere else in this
 project — the number and location of KRD values depends on which data

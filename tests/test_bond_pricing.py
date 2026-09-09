@@ -259,6 +259,67 @@ def test_first_coupon_requires_extrapolation_on_live_grid_but_not_snapshot():
 
 
 # --------------------------------------------------------------------------
+# Zero-curve discounting basis (Phase 4.5C addition) -- auto-detected from
+# the curve's own columns; every test above uses a 'yield'-column curve
+# and is unaffected.
+# --------------------------------------------------------------------------
+
+
+def test_price_bond_auto_detects_a_zero_curve_via_its_column():
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    zero_curve = bootstrap_zero_curve(par_curve)
+    assert "yield" not in zero_curve.columns
+    assert "zero_rate" in zero_curve.columns
+    price = price_bond(100.0, 0.02, 10.0, zero_curve)
+    assert price > 0  # ran the zero-curve branch, not a KeyError on 'yield'
+
+
+def test_par_and_zero_bases_generally_give_different_prices():
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    zero_curve = bootstrap_zero_curve(par_curve)
+    par_price = price_bond(100.0, 0.038, 40.0, par_curve)
+    zero_price = price_bond(100.0, 0.038, 40.0, zero_curve)
+    assert par_price != pytest.approx(zero_price, rel=1e-3)
+
+
+def test_zero_basis_reproduces_bootstraps_own_self_consistency_result():
+    # price_bond's new zero-curve branch and models.bootstrap's own
+    # price_via_zero_curve are two independent call paths to the same
+    # underlying discount_factor_at -- confirms they agree, and that
+    # price_bond itself (not just bootstrap.py) achieves the
+    # self-consistency result docs/phase_4_5a_documentation.md §3 reports.
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    zero_curve = bootstrap_zero_curve(par_curve)
+    row = par_curve.loc[par_curve["maturity_years"] == 10.0].iloc[0]
+    price = price_bond(100.0, float(row["yield"]), 10.0, zero_curve)
+    assert price == pytest.approx(100.0, abs=1e-6)
+
+
+def test_zero_basis_reprices_to_par_consistently_when_freq_matches_end_to_end():
+    # Both the zero curve's own bootstrap AND the reprice use the SAME
+    # freq -- the scenario that actually matters in practice (models/
+    # bond_pricing.py's own docstring: "MUST match the freq the zero
+    # curve was itself bootstrapped with"). The isolated compounding-
+    # mismatch case is covered directly at the bootstrap level
+    # (tests/test_bootstrap.py::test_freq_matching_between_bootstrap_and_
+    # reprice_is_required_for_par), not duplicated here.
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    row = par_curve.loc[par_curve["maturity_years"] == 10.0].iloc[0]
+    for freq in (1, 2, 4):
+        zero_curve = bootstrap_zero_curve(par_curve, freq=freq)
+        price = price_bond(100.0, float(row["yield"]), 10.0, zero_curve, freq=freq)
+        assert price == pytest.approx(100.0, abs=1e-6), f"freq={freq}"
+
+
+# --------------------------------------------------------------------------
 # Input validation
 # --------------------------------------------------------------------------
 

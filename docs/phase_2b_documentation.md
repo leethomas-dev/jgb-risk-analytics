@@ -115,20 +115,27 @@ specified choice for this phase, not something discovered missing
 afterward — flagged here and in the code so a reviewer knows exactly what
 precision to expect from an absolute price.
 
-**Update (Phase 4.5):** a bootstrapped zero curve now exists —
-`models/bootstrap.py`, `docs/phase_4_5a_documentation.md` — built by
-treating this curve as if it were a par curve. Checking that assumption
-against MOF's own published methodology found it isn't one: MOF publishes
-a fitted yield-to-maturity curve on real benchmark issues, not a
-constructed par curve (`docs/phase_4_5a_documentation.md` §1) — so the
-zero curve trades this limitation for a smaller, measured one (the
-"coupon effect," quantified in that doc's §5) rather than eliminating a
-curve-based limitation outright. As of Phase 4.5A the zero curve is also
-not yet wired into `price_bond`; `price_bond`'s default behavior, and
-this limitation, are unchanged until Phase 4.5C integrates it as an
-optional discounting basis and quantifies the resulting pricing
-difference. Not deleted here since the history (this was a named,
-deliberate Phase 2B simplification, not an oversight) is worth keeping.
+**Resolved, in part (Phase 4.5).** A bootstrapped zero curve now exists
+(`models/bootstrap.py`, `docs/phase_4_5a_documentation.md`) and, as of
+Phase 4.5C, `price_bond` can discount against it directly — pass a
+`bootstrap_zero_curve()` result instead of a par curve and it's
+auto-detected (`docs/phase_4_5c_documentation.md` §1). **The par-curve
+basis remains the default**, unchanged, for every existing caller; the
+zero-curve basis is opt-in. The quantified difference between the two
+(Phase 4.5C §2) is real and, at the long end of this project's
+portfolio, large — up to ~770bp of price on the 40Y bond — confirming
+this was not a cosmetic simplification.
+
+This resolution is itself qualified, not absolute: the zero curve was
+built by treating MOF's published curve as if it were a par curve, which
+checking against MOF's own methodology found it is not — MOF publishes a
+fitted yield-to-maturity curve on real benchmark issues, not a
+constructed par curve (`docs/phase_4_5a_documentation.md` §1). So this
+resolution trades the original limitation for a smaller, measured one
+(the "coupon effect," quantified in that doc's §5), not a full
+elimination of every curve-based limitation. Not deleted here since the
+history (this was a named, deliberate Phase 2B simplification, not an
+oversight) is worth keeping.
 
 **3.3 Flat extrapolation is a policy, not a market forecast.** It keeps
 any rate this function invents plausible, but it isn't a claim that real

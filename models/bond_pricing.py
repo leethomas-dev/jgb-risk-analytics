@@ -2,14 +2,51 @@
 bond_pricing.py
 
 Curve-based bond pricing: values a bond as the sum of its cash flows, each
-discounted at the yield the curve implies for THAT cash flow's own maturity
--- not one flat yield applied to the whole bond:
+discounted at the rate the curve implies for THAT cash flow's own maturity
+-- not one flat rate applied to the whole bond.
 
-    Price = sum_i [ CF_i / (1 + y(t_i)/freq)^(freq * t_i) ]
+TWO DISCOUNTING BASES, AUTO-DETECTED FROM THE CURVE'S OWN COLUMNS (Phase
+4.5C addition). This project carried a named simplification from Phase 2B
+through Phase 4C: every price/KRD/DV01 number discounted off the curve's
+own quoted PAR-like rate directly, never a genuinely bootstrapped
+zero-coupon rate (docs/phase_2b_documentation.md §3.2, resolved in part by
+Phase 4.5A -- docs/phase_4_5a_documentation.md). That zero curve now
+exists (models.bootstrap.bootstrap_zero_curve); this module can discount
+against it directly:
 
-y(t_i) comes from curve_yield_at(), which interpolates between the curve's
-own tenor points and extrapolates FLAT beyond them (see its docstring).
-Semiannual coupons (freq=2) by default, parameterized.
+  - PAR basis (the original, default, UNCHANGED behavior): `curve` has a
+    'yield' column. Each cash flow's rate comes from curve_yield_at(),
+    which interpolates between the curve's own tenor points and
+    extrapolates FLAT beyond them (see its docstring):
+
+        Price = sum_i [ CF_i / (1 + y(t_i)/freq)^(freq * t_i) ]
+
+  - ZERO basis (new): `curve` has a 'zero_rate' column instead -- i.e. a
+    models.bootstrap.bootstrap_zero_curve() result, passed in exactly as
+    returned, no wrapper needed. Each cash flow's discount factor comes
+    from models.bootstrap.discount_factor_at() (interpolated zero rate,
+    freq-compounded) instead:
+
+        Price = sum_i [ CF_i * DF(t_i) ]
+
+  price_bond() picks the basis by inspecting `curve.columns` -- not a new
+  parameter. This means EVERY existing caller (this module's own
+  price_portfolio, and every downstream module -- key_rate_duration.py,
+  dv01.py, ultra_long_profile.py, factor_exposure.py) already supports
+  zero-curve discounting automatically, with NO code changes of their own,
+  simply by being handed a bootstrap_zero_curve() result instead of a par
+  curve -- because every one of them already treats `curve` as an opaque
+  DataFrame it passes through, per this project's own long-standing
+  "no assumption about what the curve looks like" principle
+  (docs/phase_1_documentation.md §3.5). key_rate_duration.py's bump helper
+  needed one small, backward-compatible generalization (a rate-COLUMN
+  lookup instead of a hardcoded 'yield' literal) to bump either shape;
+  bond_pricing.py and dv01.py needed no changes beyond this function
+  itself. See docs/phase_4_5c_documentation.md §1 for the full account,
+  including why this is column-detection rather than a new parameter, and
+  the CRITICAL constraint it was built under: every existing test for
+  price_bond/price_portfolio/KRD/DV01 passes UNCHANGED, because a
+  'yield'-column curve takes the exact, untouched original code path.
 
 Reads the portfolio and curve through their own loaders -- never hardcodes
 either. Cheap to call repeatedly against a modified curve on purpose:
@@ -59,8 +96,8 @@ def price_bond(
     curve: pd.DataFrame,
     freq: int = 2,
 ) -> float:
-    """Price a bond by discounting each cash flow at the curve yield for
-    that cash flow's own maturity (see curve_yield_at).
+    """Price a bond by discounting each cash flow at the rate the curve
+    implies for that cash flow's own maturity.
 
     Cash flow schedule: `freq` payments per year, built BACKWARD from
     maturity_years so the final payment lands exactly there. A maturity
@@ -72,9 +109,18 @@ def price_bond(
     face_value : redemption amount, must be > 0.
     coupon_rate : annual coupon, decimal (0.02 == 2%). May be 0.
     maturity_years : years to maturity, must be > 0.
-    curve : a par-yield curve DataFrame with columns [maturity_years,
-        yield] (yield decimal), any tenor grid, any number of rows >= 1.
+    curve : EITHER a par-yield curve, columns [maturity_years, yield]
+        (yield decimal) -- the original, default basis, discounted via
+        curve_yield_at() -- OR a bootstrapped zero curve, columns
+        [maturity_years, zero_rate] (a models.bootstrap.
+        bootstrap_zero_curve() result, passed straight through),
+        discounted via models.bootstrap.discount_factor_at() instead. The
+        basis is auto-detected from which column is present (module
+        docstring "TWO DISCOUNTING BASES") -- any tenor grid, any number
+        of rows >= 1, same as before either way.
     freq : coupon payments per year (2 = semiannual, the JGB default).
+        For the zero-curve basis, MUST match the freq the zero curve was
+        itself bootstrapped with (docs/phase_4_5a_documentation.md §1.4).
 
     Returns
     -------
@@ -99,6 +145,16 @@ def price_bond(
     coupon_payment = face_value * coupon_rate / freq
     cash_flows = np.full(n_periods, coupon_payment, dtype=float)
     cash_flows[-1] += face_value  # final period also redeems face value
+
+    if "zero_rate" in curve.columns:
+        # Local import: avoids a module-level circular import, since
+        # models.bootstrap itself imports curve_yield_at from this module
+        # -- the same deferred-import pattern models.bootstrap.implied_ytm
+        # already uses for the reverse direction.
+        from models.bootstrap import discount_factor_at
+
+        discount_factors = discount_factor_at(curve, cash_flow_times, freq=freq)
+        return float(np.sum(cash_flows * discount_factors))
 
     yields_at_flows = curve_yield_at(curve, cash_flow_times)
     discount_factors = (1.0 + yields_at_flows / freq) ** (freq * cash_flow_times)

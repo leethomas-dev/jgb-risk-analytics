@@ -189,6 +189,59 @@ def test_portfolio_krd_matches_single_bond_krd_per_row():
 
 
 # --------------------------------------------------------------------------
+# Works against a bootstrapped zero curve too (Phase 4.5C addition) --
+# _rate_column generalizes the bump helper without changing any of the
+# above (all of which use a par curve, unaffected).
+# --------------------------------------------------------------------------
+
+
+def test_key_rate_duration_bond_works_against_a_zero_curve():
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    zero_curve = bootstrap_zero_curve(par_curve)
+    krd = key_rate_duration_bond(100.0, 0.02, 10.0, zero_curve)
+    assert list(krd.index) == sorted(zero_curve["maturity_years"].tolist())
+    assert np.isfinite(krd.to_numpy()).all()
+
+
+def test_sum_of_krds_approximates_effective_duration_on_a_zero_curve():
+    # The same sanity check as test_sum_of_krds_approximates_effective_duration
+    # above, run against the OTHER curve basis -- the tent-shape property
+    # (docs/phase_3a_documentation.md §1.1) doesn't depend on which rate
+    # column the curve happens to carry.
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    zero_curve = bootstrap_zero_curve(par_curve)
+    for maturity, coupon in [(2.0, 0.01), (10.0, 0.02), (30.0, 0.035), (40.0, 0.038)]:
+        krd = key_rate_duration_bond(100.0, coupon, maturity, zero_curve)
+        eff_dur = effective_duration_bond(100.0, coupon, maturity, zero_curve)
+        assert krd.sum() == pytest.approx(eff_dur, rel=1e-5)
+
+
+def test_par_and_zero_bases_give_different_effective_durations_in_general():
+    # Confirms the two bases aren't silently collapsing to the same
+    # number -- a real, expected difference (docs/phase_4_5c_documentation.md
+    # §2), not just "it runs."
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    zero_curve = bootstrap_zero_curve(par_curve)
+    par_dur = effective_duration_bond(100.0, 0.038, 40.0, par_curve)
+    zero_dur = effective_duration_bond(100.0, 0.038, 40.0, zero_curve)
+    assert par_dur != pytest.approx(zero_dur, rel=1e-3)
+
+
+def test_rate_column_rejects_a_curve_with_neither_column():
+    from models.key_rate_duration import _rate_column
+
+    bad_curve = pd.DataFrame({"maturity_years": [1.0, 2.0], "something_else": [0.01, 0.02]})
+    with pytest.raises(ValueError, match="yield.*zero_rate"):
+        _rate_column(bad_curve)
+
+
+# --------------------------------------------------------------------------
 # Input validation
 # --------------------------------------------------------------------------
 

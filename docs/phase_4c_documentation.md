@@ -240,11 +240,17 @@ reasonable guide to near-future curve behavior** — Phase 4B's own
 caveat (§4.3 there), inherited here and now expressed as a concrete
 currency figure, which reads as more certain than a variance ratio does.
 
-**3.5 Inherits the no-zero-curve caveat carried through the whole
-project.** Pricing here (via `price_bond`/`price_portfolio`) is on the
-same par-curve, non-bootstrapped basis established in Phase 1 and
-carried through Phase 2B — no zero-curve or forward-curve construction
-exists anywhere in this codebase (`docs/phase_2b_documentation.md`).
+**3.5 Inherited the no-zero-curve caveat carried through the whole
+project — resolved, in part, by Phase 4.5.** At the time this module was
+built, pricing here (via `price_bond`/`price_portfolio`) was on the same
+par-curve, non-bootstrapped basis established in Phase 1 and carried
+through Phase 2B. A bootstrapped zero curve now exists and can be
+substituted directly (`docs/phase_4_5a_documentation.md`,
+`docs/phase_4_5c_documentation.md`); this module's own KRD/DV01/factor-
+exposure calls still default to the par curve, unchanged, and were not
+rerun against the zero curve as part of Phase 4.5 — see
+`docs/phase_4_5c_documentation.md` §2 for how large that difference is
+elsewhere in this project's own portfolio.
 
 ---
 

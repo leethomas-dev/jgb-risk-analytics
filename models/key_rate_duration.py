@@ -11,6 +11,16 @@ central (two-sided) difference:
 Reads the portfolio and prices via their own loaders -- never hardcodes
 either, and does no curve interpolation of its own.
 
+WORKS ON EITHER A PAR CURVE OR A BOOTSTRAPPED ZERO CURVE (Phase 4.5C
+addition), unchanged for existing callers: _rate_column() reads which
+rate column a curve actually has ('yield' or 'zero_rate') instead of
+_bump_curve_at/effective_duration_bond hardcoding 'yield' -- a par curve
+still always resolves to 'yield', the original literal, so every existing
+test's code path is untouched bit-for-bit. See
+models/bond_pricing.py's own module docstring for the matching
+auto-detection there, and docs/phase_4_5c_documentation.md §1 for the
+full account.
+
 BUMP SHAPE: bumping one curve row becomes a TRIANGULAR ("tent") shape in
 the interpolated curve, automatically -- not special-cased here, just a
 consequence of price_bond's own straight-line interpolation between grid
@@ -73,14 +83,36 @@ def _sorted_tenors_and_curve(curve: pd.DataFrame) -> tuple[np.ndarray, pd.DataFr
     return curve_sorted["maturity_years"].to_numpy(), curve_sorted
 
 
+def _rate_column(curve: pd.DataFrame) -> str:
+    """Which column holds this curve's own rate -- 'yield' for a par
+    curve, 'zero_rate' for a bootstrapped zero curve (models.bootstrap.
+    bootstrap_zero_curve()'s output shape). Phase 4.5C addition: lets
+    every bump site below work on EITHER curve shape, unchanged for any
+    existing par-curve caller (a 'yield'-column curve always resolves to
+    'yield', the original hardcoded literal, so behavior for every
+    existing test is bit-for-bit identical -- see
+    docs/phase_4_5c_documentation.md §1). price_bond itself auto-detects
+    the same way (models/bond_pricing.py module docstring).
+    """
+    if "yield" in curve.columns:
+        return "yield"
+    if "zero_rate" in curve.columns:
+        return "zero_rate"
+    raise ValueError(
+        f"curve has neither a 'yield' nor a 'zero_rate' column: {list(curve.columns)}"
+    )
+
+
 def _bump_curve_at(curve_sorted: pd.DataFrame, row_index: int, bump_size: float) -> pd.DataFrame:
     """Return a copy of curve_sorted with bump_size added to exactly one
-    row's yield. bump_size may be negative -- key_rate_duration_bond calls
-    this once with each sign at the same row_index for its two-sided
-    difference; each call produces the tent shape described in the module
-    docstring, mirrored in sign."""
+    row's rate (module docstring's tent shape -- 'yield' for a par curve,
+    'zero_rate' for a zero curve, see _rate_column). bump_size may be
+    negative -- key_rate_duration_bond calls this once with each sign at
+    the same row_index for its two-sided difference; each call produces
+    the tent shape described in the module docstring, mirrored in sign."""
+    rate_col = _rate_column(curve_sorted)
     bumped = curve_sorted.copy()
-    bumped.loc[row_index, "yield"] = bumped.loc[row_index, "yield"] + bump_size
+    bumped.loc[row_index, rate_col] = bumped.loc[row_index, rate_col] + bump_size
     return bumped
 
 
@@ -147,14 +179,15 @@ def effective_duration_bond(
         raise ValueError(f"bump_size must be positive, got {bump_size}")
 
     _, curve_sorted = _sorted_tenors_and_curve(curve)
+    rate_col = _rate_column(curve_sorted)
     base_price = price_bond(face_value, coupon_rate, maturity_years, curve_sorted, freq=freq)
 
     shifted_up = curve_sorted.copy()
-    shifted_up["yield"] = shifted_up["yield"] + bump_size
+    shifted_up[rate_col] = shifted_up[rate_col] + bump_size
     shifted_up_price = price_bond(face_value, coupon_rate, maturity_years, shifted_up, freq=freq)
 
     shifted_down = curve_sorted.copy()
-    shifted_down["yield"] = shifted_down["yield"] - bump_size
+    shifted_down[rate_col] = shifted_down[rate_col] - bump_size
     shifted_down_price = price_bond(face_value, coupon_rate, maturity_years, shifted_down, freq=freq)
 
     return -(shifted_up_price - shifted_down_price) / (2.0 * base_price * bump_size)
