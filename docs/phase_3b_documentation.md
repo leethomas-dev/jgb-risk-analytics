@@ -136,6 +136,13 @@ more rigorously derived one. Worth restating here specifically, since a
 currency figure reads as more concrete/tradeable than a percentage one,
 inviting even more confidence than it should carry.
 
+**Update (Phase 4.5):** a bootstrapped zero curve now exists
+(`docs/phase_4_5a_documentation.md`) but is not yet wired into
+`price_bond`'s default path — see the same note in
+`docs/phase_2b_documentation.md` §3.2. This limitation is unchanged for
+DV01 until Phase 4.5C integrates the zero curve as an optional
+discounting basis and quantifies the resulting DV01 difference.
+
 **3.2 DV01's tenor set isn't fixed** — same as every other module; a
 DV01 table from one data source isn't directly comparable, column for
 column, to one from another.

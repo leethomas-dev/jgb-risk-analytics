@@ -139,6 +139,13 @@ number invites a sharper reading than a price does. Read any KRD figure
 in this project as the sensitivity of that same approximation, not of a
 theoretically exact rate.
 
+**Update (Phase 4.5):** a bootstrapped zero curve now exists
+(`docs/phase_4_5a_documentation.md`) but is not yet wired into
+`price_bond`'s default path — see the same note in
+`docs/phase_2b_documentation.md` §3.2. This limitation is unchanged for
+KRD until Phase 4.5C integrates the zero curve as an optional discounting
+basis.
+
 **3.2 KRD's tenor set isn't fixed.** Same as everywhere else in this
 project — the number and location of KRD values depends on which data
 source served the curve. A "10-year KRD" from two different runs is only
