@@ -26,9 +26,11 @@ from models.bond_pricing import (
     _coupon_boundaries,
     accrued_interest,
     accrued_interest_portfolio,
+    cash_flow_schedule,
     curve_yield_at,
     dirty_price,
     dirty_price_portfolio,
+    discount_factors_at,
     price_bond,
     price_portfolio,
 )
@@ -571,3 +573,64 @@ def test_dirty_price_portfolio_equals_clean_plus_accrued_per_row():
         results["clean_price"] + results["accrued_interest"],
         check_names=False,
     )
+
+
+# --------------------------------------------------------------------------
+# discount_factors_at (Phase 4.6C): factored out of price_bond's own two
+# discounting branches so a second module (models/cash_flow_ladder.py) can
+# reuse the exact same per-cash-flow discounting price_bond itself uses.
+# --------------------------------------------------------------------------
+
+
+def test_discount_factors_at_reproduces_price_bond_on_a_par_curve():
+    # cash_flows @ discount_factors_at(...) must equal price_bond's own
+    # output exactly -- the refactor's whole point (module docstring).
+    curve = load_jgb_curve(prefer_live=False)
+    face, coupon, maturity, freq = 100.0, 0.025, 10.0, 2
+    n_periods, cash_flow_times = cash_flow_schedule(maturity, freq)
+    cash_flows = np.full(n_periods, face * coupon / freq)
+    cash_flows[-1] += face
+
+    factors = discount_factors_at(curve, cash_flow_times, freq=freq)
+    reconstructed_price = float(np.sum(cash_flows * factors))
+
+    assert reconstructed_price == pytest.approx(price_bond(face, coupon, maturity, curve, freq=freq))
+
+
+def test_discount_factors_at_reproduces_price_bond_on_a_zero_curve():
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    zero_curve = bootstrap_zero_curve(par_curve)
+    face, coupon, maturity, freq = 100.0, 0.02, 10.0, 2
+    n_periods, cash_flow_times = cash_flow_schedule(maturity, freq)
+    cash_flows = np.full(n_periods, face * coupon / freq)
+    cash_flows[-1] += face
+
+    factors = discount_factors_at(zero_curve, cash_flow_times, freq=freq)
+    reconstructed_price = float(np.sum(cash_flows * factors))
+
+    assert reconstructed_price == pytest.approx(price_bond(face, coupon, maturity, zero_curve, freq=freq))
+
+
+def test_discount_factors_at_matches_bootstraps_own_discount_factor_at():
+    # Two independent call paths to the same underlying zero-curve
+    # discount factor -- models.bootstrap.discount_factor_at directly, vs.
+    # bond_pricing.discount_factors_at's own zero-curve branch, which
+    # delegates to it.
+    from models.bootstrap import bootstrap_zero_curve, discount_factor_at
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    zero_curve = bootstrap_zero_curve(par_curve)
+    times = np.array([1.0, 5.0, 10.0, 25.0])
+
+    np.testing.assert_allclose(
+        discount_factors_at(zero_curve, times), discount_factor_at(zero_curve, times)
+    )
+
+
+def test_discount_factors_at_is_strictly_decreasing_for_a_positive_rate_curve():
+    curve = load_jgb_curve(prefer_live=False)
+    times = np.array([1.0, 5.0, 10.0, 20.0, 30.0, 40.0])
+    factors = discount_factors_at(curve, times)
+    assert np.all(np.diff(factors) < 0)

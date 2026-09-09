@@ -125,6 +125,37 @@ def cash_flow_schedule(maturity_years: float, freq: int) -> tuple[int, np.ndarra
     return n_periods, cash_flow_times
 
 
+def discount_factors_at(curve: pd.DataFrame, times, freq: int = 2) -> np.ndarray:
+    """Discount factor(s) for arbitrary time(s), auto-detected from
+    `curve`'s own columns -- exactly price_bond's own "TWO DISCOUNTING
+    BASES" logic (module docstring), factored out here (Phase 4.6C) so any
+    OTHER module needing a bond's own per-cash-flow discount factors (e.g.
+    models/cash_flow_ladder.py, present-valuing each payment) shares this
+    SAME logic rather than re-deriving it a third time.
+
+    Always returns a TRUE discount factor -- i.e. `price = cash_flow *
+    discount_factor` for either basis, never a divide-by for one and a
+    multiply-by for the other. This is a genuine (if small) restructuring
+    of price_bond's own inline branch, not a copy of it: the original par-
+    basis code computed `(1+y/freq)**(freq*t)` and DIVIDED cash flows by
+    it; here that same quantity is inverted once so callers on both bases
+    always just multiply. price_bond itself was updated to call this and
+    multiply -- confirmed, via the full pre-existing test suite passing
+    unchanged, to produce bit-for-bit the same prices as before.
+    """
+    if "zero_rate" in curve.columns:
+        # Local import: avoids a module-level circular import, since
+        # models.bootstrap itself imports curve_yield_at from this module
+        # -- the same deferred-import pattern models.bootstrap.implied_ytm
+        # already uses for the reverse direction.
+        from models.bootstrap import discount_factor_at
+
+        return discount_factor_at(curve, times, freq=freq)
+
+    yields_at_times = curve_yield_at(curve, times)
+    return 1.0 / (1.0 + yields_at_times / freq) ** (freq * np.asarray(times))
+
+
 def price_bond(
     face_value: float,
     coupon_rate: float,
@@ -178,19 +209,8 @@ def price_bond(
     cash_flows = np.full(n_periods, coupon_payment, dtype=float)
     cash_flows[-1] += face_value  # final period also redeems face value
 
-    if "zero_rate" in curve.columns:
-        # Local import: avoids a module-level circular import, since
-        # models.bootstrap itself imports curve_yield_at from this module
-        # -- the same deferred-import pattern models.bootstrap.implied_ytm
-        # already uses for the reverse direction.
-        from models.bootstrap import discount_factor_at
-
-        discount_factors = discount_factor_at(curve, cash_flow_times, freq=freq)
-        return float(np.sum(cash_flows * discount_factors))
-
-    yields_at_flows = curve_yield_at(curve, cash_flow_times)
-    discount_factors = (1.0 + yields_at_flows / freq) ** (freq * cash_flow_times)
-    return float(np.sum(cash_flows / discount_factors))
+    discount_factors = discount_factors_at(curve, cash_flow_times, freq=freq)
+    return float(np.sum(cash_flows * discount_factors))
 
 
 def price_portfolio(

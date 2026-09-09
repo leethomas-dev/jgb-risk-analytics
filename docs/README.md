@@ -23,6 +23,7 @@ model validator can review a decision without re-deriving it from the diff.
 | 4.5C  | [`phase_4_5c_documentation.md`](phase_4_5c_documentation.md) | `models/bond_pricing.py`/`key_rate_duration.py` (extended) + `models/zero_curve_impact.py` — optional zero-curve discounting, its quantified par-vs-zero pricing impact, and NS-vs-PCA loading comparison | Done   |
 | 4.6A  | [`phase_4_6a_documentation.md`](phase_4_6a_documentation.md) | `models/day_count.py` (new) + `models/bond_pricing.py` (extended) — `accrued_interest()` / `dirty_price()`, settlement-date-aware clean/dirty pricing on an Actual/365 day count | Done   |
 | 4.6B  | [`phase_4_6b_documentation.md`](phase_4_6b_documentation.md) | `models/bond_analytics.py` — `yield_to_maturity()` / `macaulay_duration()` / `modified_duration()` / `convexity()`, cross-checked against Phase 3A's effective duration and a Taylor-approximation reprice test | Done   |
+| 4.6C  | [`phase_4_6c_documentation.md`](phase_4_6c_documentation.md) | `models/cash_flow_ladder.py` — `compute_cash_flow_ladder()` / `plot_cash_flow_ladder()`, the portfolio's coupon/principal cash flows by date, nominal and present value | Done   |
 
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded
