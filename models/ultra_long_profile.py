@@ -55,6 +55,14 @@ DEFAULT_ULTRA_LONG_THRESHOLD_YEARS = 20.0
 # module's own location rather than the caller's working directory.
 DEFAULT_CHART_PATH = Path(__file__).resolve().parent.parent / "outputs" / "ultra_long_dv01_profile.png"
 
+# The categorical (< threshold / >= threshold) color pair plot_ultra_long_profile
+# uses below -- promoted to named, importable constants (the same reasoning
+# models.factor_exposure.COLOR_GAIN/COLOR_LOSS were promoted for, Phase 4C)
+# so a second chart of the same split (e.g. Phase 4.7's dashboard) reuses this
+# exact palette rather than a second, independently-chosen one.
+NORMAL_COLOR = "#4C72B0"
+ULTRA_LONG_COLOR = "#C44E52"
+
 
 @dataclass(frozen=True)
 class UltraLongProfile:
@@ -155,7 +163,7 @@ def plot_ultra_long_profile(
     series = profile.dv01_by_tenor if metric == "dv01" else profile.krd_by_tenor
     is_ultra_long = profile.tenors >= profile.threshold_years
 
-    colors = ["#4C72B0" if not ul else "#C44E52" for ul in is_ultra_long]
+    colors = [NORMAL_COLOR if not ul else ULTRA_LONG_COLOR for ul in is_ultra_long]
 
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.bar([str(t) for t in profile.tenors], series.to_numpy(), color=colors)
@@ -175,8 +183,8 @@ def plot_ultra_long_profile(
 
     ax.legend(
         handles=[
-            Patch(color="#4C72B0", label=f"< {profile.threshold_years:.0f}Y"),
-            Patch(color="#C44E52", label=f">= {profile.threshold_years:.0f}Y (ultra-long)"),
+            Patch(color=NORMAL_COLOR, label=f"< {profile.threshold_years:.0f}Y"),
+            Patch(color=ULTRA_LONG_COLOR, label=f">= {profile.threshold_years:.0f}Y (ultra-long)"),
         ]
     )
     fig.tight_layout()

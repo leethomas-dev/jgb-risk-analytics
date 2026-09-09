@@ -1,0 +1,17 @@
+# Base Streamlit theme -- sets the native widget colors before app.py's own
+# injected CSS (fonts, gradients, glow, animation) loads on top of it, so
+# there's no flash of the default light theme. See
+# docs/phase_4_7_documentation.md for why this app is themed at all (a
+# deliberate, explicit scope expansion past Phase 4.7's original minimal
+# brief, at the user's request) and where the line was drawn.
+
+[theme]
+base = "dark"
+primaryColor = "#22d3ee"
+backgroundColor = "#0b0f17"
+secondaryBackgroundColor = "#121a29"
+textColor = "#e6edf3"
+font = "monospace"
+
+[client]
+toolbarMode = "minimal"

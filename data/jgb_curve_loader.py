@@ -33,6 +33,7 @@ import json
 import os
 import sys
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -157,8 +158,14 @@ def _find_mof_header_row_index(lines: list[str]) -> int | None:
     return next((i for i, line in enumerate(lines) if line.startswith("Date,")), None)
 
 
-def _fetch_live_curve() -> pd.DataFrame:
+def _fetch_live_curve() -> tuple[pd.DataFrame, str]:
     """Pull the latest published JGB curve directly from MOF.
+
+    Returns (curve, as_of) -- as_of is MOF's own published date for the
+    row actually used (ISO YYYY-MM-DD), not just "when we happened to
+    fetch it". Callers that don't need it (load_jgb_curve itself) just
+    discard the second element; load_jgb_curve_with_source (below) is why
+    it's captured here rather than dropped the way it used to be.
 
     Raises on any failure (network, HTTP status, parsing, implausible values) --
     callers are expected to catch and fall back to the cache or snapshot.
@@ -201,7 +208,8 @@ def _fetch_live_curve() -> pd.DataFrame:
 
     df = _standardize_curve(rows)
     _validate_curve_df(df)
-    return df
+    as_of = pd.to_datetime(latest_row["Date"], format="%Y/%m/%d").date().isoformat()
+    return df, as_of
 
 
 def _write_cache(df: pd.DataFrame) -> None:
@@ -247,27 +255,25 @@ def _read_cache() -> tuple[pd.DataFrame, str, int]:
     return df, fetched_utc, age_days
 
 
-def load_jgb_curve(prefer_live: bool = True, verbose: bool = True) -> pd.DataFrame:
-    """Load the JGB par yield curve.
+def _load_curve_with_tier(prefer_live: bool, verbose: bool) -> tuple[pd.DataFrame, str, str]:
+    """The tier-selection control flow (live -> cache -> snapshot) shared
+    by load_jgb_curve() and load_jgb_curve_with_source() below -- extracted
+    so there is exactly one place this logic lives, rather than a second
+    copy for the metadata-returning variant (the same
+    extract-a-shared-helper pattern this project uses whenever two callers
+    need the same control flow, e.g. jgb_curve_history_loader.py's reuse of
+    _find_mof_header_row_index, docs/phase_4a_documentation.md §5).
 
-    Parameters
-    ----------
-    prefer_live : if True (default), try the live MOF pull first; on success
-        cache it and return it, on failure fall back to the local cache and then
-        to the embedded snapshot. If False, skip BOTH the live pull and the cache
-        and return the embedded snapshot directly -- use this for deterministic
-        tests / CI and for reproducible SR 11-7 validation runs.
-    verbose : print which source was used (and, for the cache, how old it is) to
-        stderr.
-
-    Returns
-    -------
-    pd.DataFrame with columns [maturity_years, yield] (yield as a decimal),
-    sorted ascending by maturity_years with a fresh RangeIndex.
+    Returns (curve, source_tier, as_of) -- source_tier is 'live', 'cache',
+    or 'snapshot'; as_of is an ISO date string: MOF's own published date
+    for 'live' (module-level _fetch_live_curve now captures this), the
+    cache's own fetch timestamp's date for 'cache' (the best available
+    proxy -- the cache does not separately store MOF's own row date, only
+    when this machine pulled it), or SNAPSHOT_DATE for 'snapshot'.
     """
     if prefer_live:
         try:
-            df = _fetch_live_curve()
+            df, as_of = _fetch_live_curve()
         except Exception as exc:  # noqa: BLE001 - deliberate catch-all fallback
             if verbose:
                 print(
@@ -289,7 +295,7 @@ def load_jgb_curve(prefer_live: bool = True, verbose: bool = True) -> pd.DataFra
                 print(
                     "[jgb_curve_loader] Loaded LIVE curve from MOF.", file=sys.stderr
                 )
-            return df
+            return df, "live", as_of
 
         if CACHE_PATH.exists():
             try:
@@ -309,7 +315,7 @@ def load_jgb_curve(prefer_live: bool = True, verbose: bool = True) -> pd.DataFra
                         "this machine.",
                         file=sys.stderr,
                     )
-                return df
+                return df, "cache", fetched_utc[:10]
 
     df = _snapshot_curve_dataframe()
     if verbose:
@@ -320,7 +326,60 @@ def load_jgb_curve(prefer_live: bool = True, verbose: bool = True) -> pd.DataFra
             "may be stale; see docs/phase_1_documentation.md §5.",
             file=sys.stderr,
         )
+    return df, "snapshot", SNAPSHOT_DATE
+
+
+def load_jgb_curve(prefer_live: bool = True, verbose: bool = True) -> pd.DataFrame:
+    """Load the JGB par yield curve.
+
+    Parameters
+    ----------
+    prefer_live : if True (default), try the live MOF pull first; on success
+        cache it and return it, on failure fall back to the local cache and then
+        to the embedded snapshot. If False, skip BOTH the live pull and the cache
+        and return the embedded snapshot directly -- use this for deterministic
+        tests / CI and for reproducible SR 11-7 validation runs.
+    verbose : print which source was used (and, for the cache, how old it is) to
+        stderr.
+
+    Returns
+    -------
+    pd.DataFrame with columns [maturity_years, yield] (yield as a decimal),
+    sorted ascending by maturity_years with a fresh RangeIndex.
+    """
+    df, _source_tier, _as_of = _load_curve_with_tier(prefer_live=prefer_live, verbose=verbose)
     return df
+
+
+@dataclass(frozen=True)
+class CurveSource:
+    """load_jgb_curve()'s curve, plus which tier served it and the date it
+    reflects -- for a consumer that needs to disclose data freshness
+    directly (e.g. a dashboard) rather than only reading load_jgb_curve()'s
+    stderr log line, per this project's own fallback re-anchoring policy
+    (docs/phase_1_documentation.md §5: any reader of fallback/cached data
+    should be able to tell how fresh it is).
+
+    curve : identical to what load_jgb_curve(prefer_live, verbose) itself
+        returns for the same arguments.
+    source_tier : 'live', 'cache', or 'snapshot'.
+    as_of : ISO date string -- see _load_curve_with_tier's own docstring
+        for exactly what this means per tier.
+    """
+
+    curve: pd.DataFrame
+    source_tier: str
+    as_of: str
+
+
+def load_jgb_curve_with_source(prefer_live: bool = True, verbose: bool = True) -> CurveSource:
+    """Like load_jgb_curve(), but also reports which tier actually served
+    the curve and the date it reflects. Shares load_jgb_curve()'s own
+    tier-selection control flow (_load_curve_with_tier) rather than a
+    second, competing implementation -- so the two functions can never
+    disagree about which tier was used for the same call."""
+    curve, source_tier, as_of = _load_curve_with_tier(prefer_live=prefer_live, verbose=verbose)
+    return CurveSource(curve=curve, source_tier=source_tier, as_of=as_of)
 
 
 if __name__ == "__main__":
