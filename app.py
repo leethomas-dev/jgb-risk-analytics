@@ -79,9 +79,16 @@ st.set_page_config(page_title="JGB Risk Analytics", layout="wide", page_icon="\U
 # Visual theme -- CSS only, layered on top of .streamlit/config.toml's base
 # dark theme. Cosmetic, and deliberately kept separate from every analytics
 # call above/below it: nothing in this block reads or touches a computed
-# number. A scope expansion past Phase 4.7's original "no custom CSS/
-# animation" brief, done at the user's explicit request -- see
-# docs/phase_4_7_documentation.md.
+# number.
+#
+# Restyled to match DESIGN.md's "information-dense financial terminal, not
+# a product dashboard" direction (Bloomberg/Eikon reference point, not a
+# marketed surface) -- gradients, glow shadows, rounded cards, and a second
+# decorative accent color are that spec's named anti-patterns, so none of
+# them appear below. --accent-cyan survives as the system's one reserved
+# accent, spent only on risk-signal contexts (currently: the portfolio
+# validation error banner) -- never on headings, buttons, or default-state
+# chrome. See DESIGN.md for the full rule set.
 #
 # [data-testid="..."] selectors below are Streamlit's internal DOM hooks,
 # not a public/versioned API -- they can change in a future Streamlit
@@ -96,27 +103,26 @@ st.markdown(
 
 :root {
   --accent-cyan: #22d3ee;
-  --accent-violet: #a78bfa;
   --bg-panel: #121a29;
-  --border-glow: rgba(34, 211, 238, 0.28);
+  --bg-sidebar: #0d1420;
+  --border: rgba(255, 255, 255, 0.14);
+  --border-hover: rgba(255, 255, 255, 0.35);
+  --text: #e6edf3;
+  --text-muted: rgba(230, 237, 243, 0.6);
 }
 
 [data-testid="stAppViewContainer"] {
-  background: radial-gradient(circle at 12% -10%, #14213d 0%, #0b0f17 45%, #05070c 100%);
+  background: #0b0f17;
 }
 
 [data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #0d1420 0%, #0a0e17 100%);
-  border-right: 1px solid var(--border-glow);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
 }
 
 h1, h2, h3 {
   font-family: 'Space Grotesk', sans-serif !important;
-  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-violet));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent !important;
+  color: var(--text) !important;
   letter-spacing: 0.01em;
   animation: jgbFadeSlideIn 0.6s ease-out both;
 }
@@ -131,31 +137,47 @@ h1, h2, h3 {
    that -- it always plays on paint, regardless of scroll position. */
 [data-testid="stMetric"] {
   background: var(--bg-panel);
-  border: 1px solid var(--border-glow);
-  border-radius: 12px;
-  padding: 1rem 1rem 0.7rem 1rem;
-  box-shadow: 0 0 24px rgba(34, 211, 238, 0.08);
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0.75rem 1rem 0.5rem 1rem;
   animation: jgbFadeSlideIn 0.5s ease-out both;
-}
-[data-testid="stMetric"]:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 0 32px rgba(34, 211, 238, 0.24);
 }
 [data-testid="stMetricValue"] {
   font-family: 'JetBrains Mono', monospace !important;
-  color: var(--accent-cyan) !important;
+  font-weight: 600;
+  font-size: 1.9rem !important;
+  color: var(--text) !important;
+}
+[data-testid="stMetricLabel"] {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.72rem !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted) !important;
 }
 
 .stButton button {
-  background: linear-gradient(90deg, var(--accent-cyan), var(--accent-violet));
-  color: #05070c;
-  border: none;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 0;
+  font-family: 'JetBrains Mono', monospace;
   font-weight: 600;
-  transition: box-shadow 0.25s ease;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 .stButton button:hover {
-  box-shadow: 0 0 18px rgba(167, 139, 250, 0.55);
+  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* The system's one reserved accent: risk-signal contexts only (currently
+   the portfolio-weight validation error, below). Never used for routine
+   interaction -- see DESIGN.md's "Reserved Accent Rule". */
+[data-testid="stAlert"] {
+  background: var(--bg-panel);
+  border: 1px solid var(--accent-cyan);
+  border-radius: 0;
 }
 
 @keyframes jgbFadeSlideIn {
@@ -291,11 +313,6 @@ st.sidebar.title("JGB Risk Analytics")
 st.sidebar.markdown(f"[View source on GitHub]({GITHUB_URL})")
 st.sidebar.divider()
 st.sidebar.subheader("Portfolio weights")
-st.sidebar.caption(
-    "Edit the Weight % column below. A table (st.data_editor) was chosen over "
-    "one number input per bond so maturity and coupon stay visible as context "
-    "right next to the weight being changed, in one compact control."
-)
 
 if "weights" not in st.session_state:
     st.session_state.weights = {b.name: b.weight for b in BASE_PORTFOLIO}
@@ -322,6 +339,12 @@ editor_source = pd.DataFrame(
     ]
 )
 
+# A table (st.data_editor), not one number input per bond -- so maturity
+# and coupon stay visible as read-only context right next to the weight
+# being changed, in one compact control. Bond/Maturity/Coupon are
+# `disabled=True` (Streamlit renders them dimmed, uneditable); only
+# Weight % is left interactive; the caption below the table (folded into
+# the "must total 100%" line, not a separate sentence above it) says so.
 edited = st.sidebar.data_editor(
     editor_source,
     hide_index=True,
@@ -339,7 +362,7 @@ for _, row in edited.iterrows():
     st.session_state.weights[row["Bond"]] = round(float(row["Weight %"]) / 100.0, 6)
 
 weight_sum = sum(st.session_state.weights.values())
-st.sidebar.caption(f"Weights sum to **{weight_sum:.2%}** (must total 100%).")
+st.sidebar.caption(f"Only **Weight %** is editable, and must total 100% (currently **{weight_sum:.2%}**).")
 st.sidebar.button("Reset to default weights", on_click=_reset_weights, width="stretch")
 
 portfolio, portfolio_error = load_edited_portfolio(st.session_state.weights)
@@ -407,7 +430,7 @@ c1.metric(
 )
 c2.metric("Modified duration", f"{portfolio_mod_dur:.2f} yrs")
 c3.metric("Convexity", f"{portfolio_convexity:.1f}")
-c4.metric("Risk beyond 20Y (DV01 share)", f"{ultra_long.dv01_ultra_long_share:.1%}")
+c4.metric(f"{ultra_long.threshold_years:.0f}Y+ DV01 share", f"{ultra_long.dv01_ultra_long_share:.1%}")
 st.caption(
     "DV01: how many currency units the portfolio gains or loses if every rate moves by 0.01%. "
     "Duration: roughly the % price move for a 1% rate move. Convexity: a correction that matters more "
@@ -426,14 +449,20 @@ st.caption(f"Curve as of **{curve_source.as_of}** &nbsp;|&nbsp; source: **{curve
 
 fine_grid = np.linspace(float(zero_curve["maturity_years"].min()), float(zero_curve["maturity_years"].max()), 300)
 
-# Explicit per-trace colors, matching this dashboard's own theme accents --
-# not left to Plotly's default color cycle, whose third color (~#00cc96, a
-# pale green) is genuinely low-contrast against a white background. None of
-# these three lines carry a semantic meaning (gain/loss, ultra-long/normal)
-# the way this project's other validated chart colors do elsewhere in
-# app.py, so they're just defined here rather than repurposing one of those.
-CURVE_PAR_COLOR = "#22d3ee"  # cyan -- matches --accent-cyan
-CURVE_ZERO_COLOR = "#a78bfa"  # violet -- matches --accent-violet
+# Explicit per-trace colors -- not left to Plotly's default color cycle,
+# whose third color (~#00cc96, a pale green) is genuinely low-contrast
+# against a white background. None of these three lines carry a semantic
+# meaning (gain/loss, ultra-long/normal) the way this project's other
+# validated chart colors do elsewhere in app.py, so they're just defined
+# here rather than repurposing one of those. Deliberately NOT cyan
+# (--accent-cyan, #22d3ee): per DESIGN.md's Reserved Accent Rule, that
+# color is spent only on risk-signal contexts (the validation error
+# banner), never on a routine chart line -- so the primary/quoted curve
+# gets the neutral text color instead, and stays visually "first" among
+# the three by being the brightest neutral rather than by borrowing the
+# one color the rest of the system deliberately withholds from decoration.
+CURVE_PAR_COLOR = "#e6edf3"  # neutral text color -- the quoted curve, not the accent
+CURVE_ZERO_COLOR = "#a78bfa"  # violet -- a data color for this chart only, unrelated to UI chrome
 CURVE_FIT_COLOR = "#f59e0b"  # amber -- deliberately not green; reads on light or dark
 
 fig_curve = go.Figure()

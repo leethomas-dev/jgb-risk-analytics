@@ -187,10 +187,22 @@ like scope crept in unnoticed.
   theme before `app.py`'s own CSS loads on top of it.
 - **Injected CSS** (`st.markdown(..., unsafe_allow_html=True)`, top of
   `app.py`) — Google Fonts (Space Grotesk for headers, JetBrains Mono for
-  numbers), gradient-text headers, glowing bordered metric cards, a CSS
-  `@keyframes` entrance fade for both headers and metric cards, a
-  gradient button style. Purely cosmetic — nothing in this block reads or
-  writes a computed value.
+  numbers) and a CSS `@keyframes` entrance fade for both headers and
+  metric cards. Purely cosmetic — nothing in this block reads or writes a
+  computed value.
+
+  **Correction (post-Phase 4.7, before any deploy):** this originally
+  also included gradient-text headers, glowing bordered metric cards, and
+  a gradient button style — a "futuristic" look, per the request above.
+  That was superseded once `DESIGN.md` committed this dashboard to an
+  information-dense financial-terminal direction instead (Bloomberg/Eikon
+  reference point, not a marketed surface): gradients, glow shadows,
+  rounded corners, and a second decorative accent color are that spec's
+  named anti-patterns, so `app.py`'s CSS was rewritten to drop them. The
+  entrance-fade `@keyframes` and the anime.js/motion.dev pieces below were
+  untouched by that pass — see `DESIGN.md` for the current, authoritative
+  visual rules; this section stays as the historical record of why custom
+  CSS/animation exists in this file at all.
 - **`_style_fig()`** — applies the same dark theme to every Plotly chart
   (background, gridlines, font, and `hoverlabel=dict(namelength=-1)` —
   see the hover-truncation bug below). Never touches a trace's own data or
