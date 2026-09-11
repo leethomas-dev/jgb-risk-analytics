@@ -24,7 +24,8 @@ one.
 disclaimer and schema notes) and `config/portfolio_loader.py` (`Bond`, a
 frozen dataclass; `load_portfolio()`, the public entry point;
 `_resolve_maturity()` / `_validate_portfolio()`, the resolution and
-validation logic).
+validation logic; `_parse_date()` / `_parse_japanese_era_date()`, the date
+parsing described in §2).
 
 **Output contract:** `load_portfolio(path=None, valuation_date=None)`
 returns `list[Bond]`. Each `Bond` has `name`, `maturity_years` (always
@@ -110,6 +111,19 @@ already supports that without any code changes:
   more precise than anything downstream can actually use. A real
   settlement/accrued-interest calculation, if ever needed, is separate,
   unbuilt work (§4).
+- **`issue_date` and `maturity_date` accept more than plain ISO
+  `YYYY-MM-DD`.** The loader also recognizes a set of alternative formats
+  that are unambiguous on their own — `YYYY/MM/DD`, a spelled-out month
+  (`04-Mar-2025`), Japanese numeric dates (`2025年3月4日`, including
+  fullwidth digits), and Japanese era dates (`令和7年3月4日`,
+  `平成元年1月8日` — covering Meiji through Reiwa, with the era's own
+  first year written `元年`). Whatever format is given, the stored value
+  is always normalized to ISO, so every downstream consumer keeps reading
+  plain `YYYY-MM-DD`. **Deliberately not accepted:** numeric `DD/MM/YYYY`
+  or `MM/DD/YYYY` — for a day ≤ 12 these are ambiguous with each other
+  (`03/04/2025` — March 4th or April 3rd?), and guessing wrong would
+  silently corrupt `maturity_years` rather than raise an error, so the
+  loader rejects them and asks for an unambiguous form instead.
 
 ---
 

@@ -29,13 +29,29 @@ takes an optional `valuation_date` (default: today) that this computation
 is measured from, so a pinned run stays reproducible. Not built yet: the
 real-issue data source itself, or ISIN format validation beyond
 "non-empty" -- only the schema and loader are ready to accept that data.
+
+DATE FORMATS (issue_date, maturity_date, valuation_date): ISO YYYY-MM-DD
+is the canonical form and what Bond always stores, but the loader also
+accepts a set of unambiguous alternatives -- see _parse_date -- such as
+YYYY/MM/DD, YYYY.MM.DD, YYYYMMDD, a spelled-out month (04-Mar-2025,
+March 4, 2025), Japanese numeric dates (2025年3月4日, fullwidth digits
+like ２０２５年３月４日 included), or a Japanese era date (令和7年3月4日,
+平成元年1月8日) -- see _JAPANESE_ERAS for the supported eras and their
+Gregorian start dates. Any accepted alternative is normalized to ISO on
+load, so every downstream consumer only ever sees YYYY-MM-DD. Numeric
+DD/MM/YYYY and MM/DD/YYYY forms are deliberately NOT accepted: they're
+ambiguous with each other whenever the day is <=12 (03/04/2025 is it
+Mar 4 or Apr 3?), and a wrong guess would silently corrupt maturity_years
+rather than raise -- safer to reject and ask for an unambiguous form than
+to guess.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 # Default portfolio file, sitting next to this module.
@@ -65,6 +81,92 @@ MATURITY_CONSISTENCY_TOLERANCE_YEARS = 0.05
 # which are out of scope for this loader and the pricing engine.
 DAYS_PER_YEAR = 365.25
 
+# Non-ISO date formats _parse_date also accepts, tried in this order after
+# ISO YYYY-MM-DD fails. Every format here is unambiguous by construction --
+# the year is 4 digits and either leads (YYYY/MM/DD-style) or the month is
+# spelled out as a name rather than a number -- so there's no MM/DD vs.
+# DD/MM guesswork. Deliberately NOT included: any numeric D?D-M?M-YYYY or
+# M?M-D?D-YYYY style format, since those are ambiguous with each other.
+_ADDITIONAL_DATE_FORMATS = (
+    "%Y/%m/%d",   # 2025/03/04
+    "%Y.%m.%d",   # 2025.03.04
+    "%Y%m%d",     # 20250304
+    "%d-%b-%Y",   # 04-Mar-2025
+    "%d %b %Y",   # 04 Mar 2025
+    "%d-%B-%Y",   # 04-March-2025
+    "%d %B %Y",   # 04 March 2025
+    "%b %d, %Y",  # Mar 4, 2025
+    "%b %d %Y",   # Mar 4 2025
+    "%B %d, %Y",  # March 4, 2025
+    "%B %d %Y",   # March 4 2025
+    "%Y-%b-%d",   # 2025-Mar-04
+    "%Y %B %d",   # 2025 March 04
+    "%Y年%m月%d日",  # 2025年3月4日 -- Japanese era-less numeric date; the
+                     # kanji separators pin year/month/day order regardless
+                     # of zero-padding, so this is unambiguous too.
+)
+
+# Fullwidth digits (U+FF10-FF19, e.g. "２０２５") -> ASCII "0"-"9". Applied to
+# every date string before any parsing attempt, since fullwidth numerals
+# show up in text pasted from Japanese PDFs/Excel/legacy systems and would
+# otherwise fail every format above even though the date itself is
+# unambiguous once normalized.
+_FULLWIDTH_TO_ASCII_DIGITS = str.maketrans({chr(0xFF10 + i): str(i) for i in range(10)})
+
+# Japanese era (gengou) start dates, newest first, used by
+# _parse_japanese_era_date to convert dates like "令和7年3月4日" or
+# "平成28年3月4日" to Gregorian. Each era's own year 1 is written 元年
+# rather than 1年 -- handled separately, see _JP_ERA_DATE_RE. Era boundaries
+# matter for validation: a candidate date must fall within [this era's
+# start, next-newer era's start), otherwise the era name and year disagree
+# with each other (e.g. a mistyped era for the year given).
+_JAPANESE_ERAS: tuple[tuple[str, date], ...] = (
+    ("令和", date(2019, 5, 1)),   # Reiwa
+    ("平成", date(1989, 1, 8)),   # Heisei
+    ("昭和", date(1926, 12, 25)),  # Showa
+    ("大正", date(1912, 7, 30)),  # Taisho
+    ("明治", date(1868, 1, 25)),  # Meiji
+)
+
+_JP_ERA_DATE_RE = re.compile(
+    "^(" + "|".join(name for name, _ in _JAPANESE_ERAS) + r")(元|\d{1,2})年(\d{1,2})月(\d{1,2})日$"
+)
+
+
+def _parse_japanese_era_date(text: str, *, error_prefix: str) -> date | None:
+    """Parse a Japanese era date such as "令和7年3月4日" or "平成元年1月8日".
+    Returns None (not a ValueError) if text doesn't look like an era date
+    at all, so callers can fall through to "no format matched"; raises
+    ValueError if it looks like one but the year/date is invalid for that
+    era (wrong era for the year, or a calendar date like Feb 30)."""
+    match = _JP_ERA_DATE_RE.match(text)
+    if match is None:
+        return None
+    era_name, era_year_token, month_str, day_str = match.groups()
+
+    era_index = next(i for i, (name, _) in enumerate(_JAPANESE_ERAS) if name == era_name)
+    era_start = _JAPANESE_ERAS[era_index][1]
+    era_end = _JAPANESE_ERAS[era_index - 1][1] - timedelta(days=1) if era_index > 0 else None
+
+    era_year = 1 if era_year_token == "元" else int(era_year_token)
+    gregorian_year = era_start.year + era_year - 1
+
+    try:
+        candidate = date(gregorian_year, int(month_str), int(day_str))
+    except ValueError as exc:
+        raise ValueError(
+            f"{error_prefix}: {text!r} is not a valid calendar date: {exc}"
+        ) from exc
+
+    if candidate < era_start or (era_end is not None and candidate > era_end):
+        era_range = f"{era_start.isoformat()} to {era_end.isoformat() if era_end else 'present'}"
+        raise ValueError(
+            f"{error_prefix}: {text!r} resolves to {candidate.isoformat()}, which "
+            f"falls outside the {era_name} era ({era_range}) -- check the era name "
+            "and year"
+        )
+    return candidate
+
 
 @dataclass(frozen=True)
 class Bond:
@@ -88,14 +190,52 @@ class Bond:
     tenor_class: str | None = None
 
 
+def _parse_date(raw: str, *, error_prefix: str) -> date:
+    """Parse a date string, accepting ISO YYYY-MM-DD plus the unambiguous
+    alternatives in _ADDITIONAL_DATE_FORMATS and Japanese era dates (see
+    _parse_japanese_era_date). Fullwidth digits are normalized to ASCII
+    first, so fullwidth input works with every format, not just the
+    kanji ones. Raises ValueError (message starting with error_prefix) if
+    raw matches nothing -- this is where numeric DD/MM/YYYY and MM/DD/YYYY
+    forms get turned away, since they're ambiguous with each other and a
+    wrong guess would silently corrupt the resulting maturity_years rather
+    than raise."""
+    text = str(raw).strip().translate(_FULLWIDTH_TO_ASCII_DIGITS)
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    for fmt in _ADDITIONAL_DATE_FORMATS:
+        try:
+            return datetime.strptime(text, fmt).date()
+        except ValueError:
+            continue
+    era_date = _parse_japanese_era_date(text, error_prefix=error_prefix)
+    if era_date is not None:
+        return era_date
+    raise ValueError(
+        f"{error_prefix}: expected ISO YYYY-MM-DD, or an unambiguous "
+        "alternative such as YYYY/MM/DD, YYYY.MM.DD, YYYYMMDD, a "
+        "spelled-out month (e.g. 04-Mar-2025, March 4, 2025), or a "
+        "Japanese era date (e.g. 令和7年3月4日). Numeric DD/MM/YYYY or "
+        "MM/DD/YYYY forms are not accepted -- they're ambiguous with each "
+        "other and a wrong guess would silently corrupt the resulting "
+        "maturity_years."
+    )
+
+
 def _resolve_valuation_date(valuation_date: str | date | None) -> date:
     """Normalize the valuation_date argument to a date: None -> today, a
-    date is passed through, a str is parsed as ISO "YYYY-MM-DD"."""
+    date is passed through, a str is parsed via _parse_date (ISO
+    YYYY-MM-DD or one of its unambiguous alternatives)."""
     if valuation_date is None:
         return date.today()
     if isinstance(valuation_date, date):
         return valuation_date
-    return date.fromisoformat(str(valuation_date))
+    return _parse_date(
+        str(valuation_date),
+        error_prefix=f"load_portfolio: unparseable valuation_date {valuation_date!r}",
+    )
 
 
 def _years_between(start: date, end: date) -> float:
@@ -133,25 +273,28 @@ def _resolve_maturity(
     if not has_date:
         return stated_years, None  # type: ignore[return-value]
 
-    maturity_date_str = str(raw["maturity_date"])
-    try:
-        maturity_dt = date.fromisoformat(maturity_date_str)
-    except ValueError as exc:
-        raise ValueError(
+    maturity_date_raw = str(raw["maturity_date"])
+    maturity_dt = _parse_date(
+        maturity_date_raw,
+        error_prefix=(
             f"{source}: bond {name!r} (index {index}) has an unparseable "
-            f"maturity_date {maturity_date_str!r} (expected ISO YYYY-MM-DD): {exc}"
-        ) from exc
+            f"maturity_date {maturity_date_raw!r}"
+        ),
+    )
     derived_years = _years_between(as_of, maturity_dt)
 
     if has_years and abs(stated_years - derived_years) > MATURITY_CONSISTENCY_TOLERANCE_YEARS:
         raise ValueError(
             f"{source}: bond {name!r} (index {index}) is inconsistent: "
-            f"maturity_years={stated_years} but maturity_date {maturity_date_str} "
+            f"maturity_years={stated_years} but maturity_date {maturity_date_raw} "
             f"implies {derived_years:.4f} years as of valuation date "
             f"{as_of.isoformat()} (tolerance {MATURITY_CONSISTENCY_TOLERANCE_YEARS} years)"
         )
 
-    return derived_years, maturity_date_str
+    # Normalized to ISO regardless of the input format, so every downstream
+    # consumer (including _validate_portfolio's ordering check) only ever
+    # sees YYYY-MM-DD.
+    return derived_years, maturity_dt.isoformat()
 
 
 def load_portfolio(
@@ -166,8 +309,9 @@ def load_portfolio(
         as config/portfolio.json). Defaults to DEFAULT_PORTFOLIO_PATH --
         this is the hook a test, or a future dashboard, uses to supply its
         own portfolio without touching the default file.
-    valuation_date : optional date (or ISO string) that a maturity_date is
-        measured from. Defaults to today; pass an explicit date for a
+    valuation_date : optional date (or a date string -- ISO YYYY-MM-DD or
+        an unambiguous alternative, see _parse_date) that a maturity_date
+        is measured from. Defaults to today; pass an explicit date for a
         reproducible run.
 
     Raises
@@ -207,8 +351,20 @@ def load_portfolio(
         )
 
         isin = raw.get("isin")
-        issue_date = raw.get("issue_date")
+        issue_date_raw = raw.get("issue_date")
         tenor_class = raw.get("tenor_class")
+
+        # Normalized to ISO here (same as maturity_date in _resolve_maturity)
+        # so Bond.issue_date is always YYYY-MM-DD regardless of input format.
+        issue_date_str: str | None = None
+        if issue_date_raw is not None:
+            issue_date_str = _parse_date(
+                str(issue_date_raw),
+                error_prefix=(
+                    f"{portfolio_path}: bond {name!r} (index {i}) has an "
+                    f"unparseable issue_date {issue_date_raw!r}"
+                ),
+            ).isoformat()
 
         bonds.append(
             Bond(
@@ -218,7 +374,7 @@ def load_portfolio(
                 face_value=face_value,
                 weight=weight,
                 isin=str(isin) if isin is not None else None,
-                issue_date=str(issue_date) if issue_date is not None else None,
+                issue_date=issue_date_str,
                 maturity_date=maturity_date_str,
                 tenor_class=str(tenor_class) if tenor_class is not None else None,
             )
@@ -232,8 +388,10 @@ def _validate_portfolio(bonds: list[Bond], source: Path) -> None:
     """Raise ValueError unless bonds form a plausible, internally-consistent
     portfolio. Per-bond structural checks run first; the weight-sum check
     runs once, across the whole list, since it's only meaningful in
-    aggregate. maturity_date was already parsed by _resolve_maturity, so
-    it isn't re-parsed here; issue_date is checked here instead."""
+    aggregate. issue_date and maturity_date were already parsed and
+    normalized to ISO during loading (_resolve_maturity for maturity_date,
+    the main load loop for issue_date), so they're guaranteed valid here --
+    this only checks the ordering between them."""
     if not bonds:
         raise ValueError(f"{source}: portfolio is empty")
 
@@ -270,21 +428,14 @@ def _validate_portfolio(bonds: list[Bond], source: Path) -> None:
             )
         if b.isin is not None and not b.isin.strip():
             raise ValueError(f"{source}: bond {b.name!r} has an empty isin string")
-        if b.issue_date is not None:
-            try:
-                issue_dt = date.fromisoformat(b.issue_date)
-            except ValueError as exc:
+        if b.issue_date is not None and b.maturity_date is not None:
+            issue_dt = date.fromisoformat(b.issue_date)
+            maturity_dt = date.fromisoformat(b.maturity_date)
+            if issue_dt >= maturity_dt:
                 raise ValueError(
-                    f"{source}: bond {b.name!r} has an unparseable issue_date "
-                    f"{b.issue_date!r} (expected ISO YYYY-MM-DD): {exc}"
-                ) from exc
-            if b.maturity_date is not None:
-                maturity_dt = date.fromisoformat(b.maturity_date)
-                if issue_dt >= maturity_dt:
-                    raise ValueError(
-                        f"{source}: bond {b.name!r} has issue_date {b.issue_date} "
-                        f"on or after its maturity_date {b.maturity_date}"
-                    )
+                    f"{source}: bond {b.name!r} has issue_date {b.issue_date} "
+                    f"on or after its maturity_date {b.maturity_date}"
+                )
 
     weight_sum = sum(b.weight for b in bonds)
     if abs(weight_sum - 1.0) > WEIGHT_SUM_TOLERANCE:
