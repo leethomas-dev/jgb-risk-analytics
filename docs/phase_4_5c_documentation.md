@@ -145,7 +145,14 @@ price_via_zero_curve` and `price_bond` itself) agree.
 
 `models.zero_curve_impact.compute_par_vs_zero_impact` reprices the
 standard portfolio (`config/portfolio.json`) against the committed
-snapshot curve (`prefer_live=False`, reproducible) both ways.
+snapshot curve (`prefer_live=False`, reproducible) both ways. Unlike
+`price_portfolio` and the other `_portfolio` functions downstream of it
+(which default to pricing each bond at its own `Bond.freq`, `docs/
+phase_2b_documentation.md §1.3`), `compute_par_vs_zero_impact` keeps
+`freq` a single required argument for the whole portfolio -- every bond
+here must be discounted at the same frequency the zero curve was itself
+bootstrapped with, or the par-vs-zero comparison would be internally
+inconsistent (that module's own docstring has the full reasoning).
 
 **Per bond:**
 

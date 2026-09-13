@@ -39,7 +39,9 @@ bump size constant (`models.key_rate_duration.DEFAULT_BUMP_SIZE`, Phase
 maturity_years, price, freq=2) -> float`. `macaulay_duration(...)` /
 `modified_duration(...)` / `convexity(...)` each take an already-solved
 `ytm` (not a curve) and return a `float`. `bond_analytics_portfolio(portfolio,
-curve, freq=2) -> pd.DataFrame` — one row per bond plus a
+curve, freq=None) -> pd.DataFrame` — `freq=None` computes each bond's
+analytics at its own `Bond.freq` rather than one shared frequency
+(`docs/phase_2b_documentation.md §1.3`) — one row per bond plus a
 `portfolio_total` row, columns `[name, maturity_years, coupon_rate,
 weight, price, ytm, macaulay_duration, modified_duration,
 effective_duration, convexity]`.

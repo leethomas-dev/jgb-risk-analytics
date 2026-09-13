@@ -207,13 +207,18 @@ def convexity(
 def bond_analytics_portfolio(
     portfolio: list[Bond],
     curve: pd.DataFrame,
-    freq: int = 2,
+    freq: int | None = None,
 ) -> pd.DataFrame:
     """Yield, duration, and convexity for every bond in `portfolio`,
     against one `curve` -- plus a `portfolio_total` row, weighted the same
     way as key_rate_duration_portfolio / dv01_by_tenor_portfolio (each
     bond's own config weight, load_portfolio()'s own guarantee that these
     sum to 1.0).
+
+    freq : None (default) computes each bond's own analytics at its OWN
+    bond.freq; an explicit int overrides every bond to that one shared
+    frequency (see models.bond_pricing.price_portfolio's own docstring for
+    why that override exists).
 
     Columns: name, maturity_years, coupon_rate, weight, price (clean),
     ytm, macaulay_duration, modified_duration, effective_duration (the
@@ -231,12 +236,13 @@ def bond_analytics_portfolio(
     """
     rows = []
     for bond in portfolio:
-        price = price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=freq)
-        ytm = yield_to_maturity(bond.face_value, bond.coupon_rate, bond.maturity_years, price, freq=freq)
-        mac_dur = macaulay_duration(bond.face_value, bond.coupon_rate, bond.maturity_years, ytm, freq=freq)
-        mod_dur = mac_dur / (1.0 + ytm / freq)
-        eff_dur = effective_duration_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=freq)
-        conv = convexity(bond.face_value, bond.coupon_rate, bond.maturity_years, ytm, freq=freq)
+        bond_freq = freq if freq is not None else bond.freq
+        price = price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=bond_freq)
+        ytm = yield_to_maturity(bond.face_value, bond.coupon_rate, bond.maturity_years, price, freq=bond_freq)
+        mac_dur = macaulay_duration(bond.face_value, bond.coupon_rate, bond.maturity_years, ytm, freq=bond_freq)
+        mod_dur = mac_dur / (1.0 + ytm / bond_freq)
+        eff_dur = effective_duration_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=bond_freq)
+        conv = convexity(bond.face_value, bond.coupon_rate, bond.maturity_years, ytm, freq=bond_freq)
         rows.append(
             {
                 "name": bond.name,

@@ -29,9 +29,12 @@ exact reuse) for present-valuing each payment.
 **File:** `models/cash_flow_ladder.py` — `CashFlowLadderResult` (frozen),
 `compute_cash_flow_ladder()`, `plot_cash_flow_ladder()`.
 
-**Output contract:** `compute_cash_flow_ladder(portfolio, curve, freq=2,
-valuation_date=None, threshold_years=20.0) -> CashFlowLadderResult` — a
-frozen result carrying the valuation date, frequency, ultra-long
+**Output contract:** `compute_cash_flow_ladder(portfolio, curve,
+freq=None, valuation_date=None, threshold_years=20.0) ->
+CashFlowLadderResult` — `freq=None` builds each bond's cash flows at its
+own `Bond.freq` rather than one shared frequency (`docs/phase_2b_
+documentation.md §1.3`); not stored on the result, since bonds can now
+differ. A frozen result carrying the valuation date, ultra-long
 threshold, and the full by-date ladder table (columns: `date`,
 `years_from_valuation`, `coupon_nominal`, `principal_nominal`,
 `total_nominal`, `coupon_pv`, `principal_pv`, `total_pv`), plus
@@ -112,7 +115,8 @@ cross-module helper for three lines of logic — small, precedented
 duplication preferred over a private dependency.
 
 **A genuinely clean aggregation, not a coincidence.** Every bond in the
-default portfolio shares the same `freq=2` and the same valuation date,
+default portfolio resolves to the same `freq=2` (each bond's own
+`Bond.freq`, all defaulting to semiannual) and the same valuation date,
 and every one of its maturities (2, 5, 10, 20, 30, 40 years) is a whole
 number — so every bond's own cash-flow times are an exact subset of
 `{0.5, 1.0, 1.5, ..., 40.0}` years. The result: all six bonds' first

@@ -30,8 +30,12 @@ both frozen), `compute_portfolio_factor_exposure()`,
 `plot_factor_exposure()`.
 
 **Output contract:** `compute_portfolio_factor_exposure(portfolio, curve,
-pca_result, freq=2, bump_size=DEFAULT_BUMP_SIZE) ->
-PortfolioFactorExposureResult` — the PCA window used, its tenor grid, the
+pca_result, freq=None, bump_size=DEFAULT_BUMP_SIZE) ->
+PortfolioFactorExposureResult` — `freq` is forwarded unchanged to
+`key_rate_duration_portfolio`/`dv01_by_tenor_portfolio`/`price_portfolio`:
+`None` (default) prices each bond at its own `Bond.freq`, an explicit int
+overrides every bond to one shared frequency (`docs/phase_2b_
+documentation.md §1.3`). The PCA window used, its tenor grid, the
 curve actually priced against (see §1.1), the portfolio's KRD/DV01 on
 that grid, and one `FactorExposure` (percent and currency P&L) per PCA
 component. `plot_factor_exposure(result, output_path=...,

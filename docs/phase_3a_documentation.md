@@ -89,12 +89,15 @@ whole-curve move. Exists purely as the independent number `key_rate_duration_bon
 tenor-by-tenor sum is checked against (§2); it's not a new pricing
 calculation, just `price_bond` called on two uniformly shifted curves.
 
-### 1.4 `key_rate_duration_portfolio(...)`
+### 1.4 `key_rate_duration_portfolio(portfolio, curve, freq=None, ...)`
 
 Runs `key_rate_duration_bond` once per holding and combines the results
 into one table, plus a portfolio-level total row equal to each bond's
 weight times its own KRD, summed — the same weighting already used for a
-portfolio-level price (Phase 2B).
+portfolio-level price (Phase 2B). `freq=None` runs each bond at its own
+`Bond.freq` rather than one frequency shared by the whole portfolio
+(`docs/phase_2b_documentation.md §1.3`); pass an explicit `freq` to
+override every bond to one shared frequency instead.
 
 ### 1.5 `__main__`
 

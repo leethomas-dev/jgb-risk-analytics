@@ -30,7 +30,9 @@ parsing described in §2).
 **Output contract:** `load_portfolio(path=None, valuation_date=None)`
 returns `list[Bond]`. Each `Bond` has `name`, `maturity_years` (always
 resolved to a number — see §2), `coupon_rate` (decimal), `face_value`,
-`weight` (all bonds' weights sum to 1.0), plus four optional fields
+`weight` (all bonds' weights sum to 1.0), `freq` (coupon payments per
+year, always resolved to a positive int — defaults to 2/semiannual when a
+bond's entry doesn't specify one — see §2.1), plus four optional fields
 defaulting to `None`: `isin`, `issue_date`, `maturity_date`, `tenor_class`.
 `Bond` is immutable — edit the config file and reload rather than
 modifying a loaded `Bond`.
@@ -124,6 +126,32 @@ already supports that without any code changes:
   (`03/04/2025` — March 4th or April 3rd?), and guessing wrong would
   silently corrupt `maturity_years` rather than raise an error, so the
   loader rejects them and asks for an unambiguous form instead.
+
+### 2.1 `freq` — unlike the fields above, this one is already wired through
+
+Every other field in this section is schema-ready but unused today. `freq`
+(coupon payments per year) is different: every pricing function in this
+project — `price_bond`/`price_portfolio`, Key Rate Duration, DV01, the
+cash flow ladder, bond analytics — reads **each bond's own** `bond.freq`
+rather than one frequency shared by the whole portfolio. A portfolio can
+mix payment frequencies (e.g. an annual-pay bond alongside semiannual
+JGBs) and each bond prices correctly at its own.
+
+- **Defaults to 2 (semiannual)** when a bond's config entry doesn't
+  specify one — matching the JGB market standard, and matching this
+  project's illustrative portfolio, which never sets it explicitly.
+- **Every portfolio-level function still accepts an explicit `freq`
+  override** (`price_portfolio(portfolio, curve, freq=2)`, etc.) that
+  forces every bond in the portfolio to that one shared frequency instead
+  of each bond's own. This exists because at least one consumer *needs*
+  it: `models/zero_curve_impact.py`'s `compute_par_vs_zero_impact`
+  requires every bond to be discounted at the *same* frequency the zero
+  curve it's comparing against was itself bootstrapped with — per-bond
+  freq would be actively wrong there, not just unused (see that module's
+  own docstring).
+- **Validated the same way `coupon_rate` is:** non-positive or above a
+  plausibility ceiling (12, monthly) both raise, catching a data-entry
+  mistake rather than silently accepting an implausible frequency.
 
 ---
 

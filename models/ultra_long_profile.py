@@ -110,7 +110,7 @@ def compute_ultra_long_profile(
     portfolio: list[Bond],
     curve: pd.DataFrame,
     threshold_years: float = DEFAULT_ULTRA_LONG_THRESHOLD_YEARS,
-    freq: int = 2,
+    freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> UltraLongProfile:
     """Build the ultra-long profile for one portfolio against one curve.
@@ -119,6 +119,12 @@ def compute_ultra_long_profile(
     each, takes their "portfolio_total" rows, and splits the tenor
     columns at `threshold_years`. No pricing or aggregation logic is
     reimplemented here.
+
+    freq : forwarded unchanged to both -- None (default) means each bond
+    is priced at its own bond.freq; an explicit int overrides every bond
+    to that one shared frequency (see
+    models.bond_pricing.price_portfolio's own docstring for why that
+    override exists).
     """
     krd_table = key_rate_duration_portfolio(portfolio, curve, freq=freq, bump_size=bump_size)
     dv01_table = dv01_by_tenor_portfolio(portfolio, curve, freq=freq, bump_size=bump_size)

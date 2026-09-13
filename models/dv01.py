@@ -95,7 +95,7 @@ def dv01_by_tenor_bond(
 def dv01_portfolio(
     portfolio: list[Bond],
     curve: pd.DataFrame,
-    freq: int = 2,
+    freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> pd.DataFrame:
     """Per-bond DV01 across a portfolio, mirroring price_portfolio's shape
@@ -104,6 +104,11 @@ def dv01_portfolio(
     ("what is each bond's own DV01"). A portfolio-level total is just as
     computable from this table as price_portfolio's weighted price is:
     `(df.weight * df.dv01).sum()`.
+
+    freq : None (default) prices each bond at its OWN bond.freq; an
+    explicit int overrides every bond to that one shared frequency (see
+    models.bond_pricing.price_portfolio's own docstring for why that
+    override exists).
 
     dv01_by_tenor_portfolio (below) makes the opposite shape choice on
     purpose, since it answers a per-tenor question instead.
@@ -114,12 +119,17 @@ def dv01_portfolio(
             "maturity_years": bond.maturity_years,
             "coupon_rate": bond.coupon_rate,
             "weight": bond.weight,
-            "price": price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=freq),
+            "price": price_bond(
+                bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
+                freq=freq if freq is not None else bond.freq,
+            ),
             "modified_duration": effective_duration_bond(
-                bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=freq, bump_size=bump_size
+                bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
+                freq=freq if freq is not None else bond.freq, bump_size=bump_size,
             ),
             "dv01": dv01_bond(
-                bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=freq, bump_size=bump_size
+                bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
+                freq=freq if freq is not None else bond.freq, bump_size=bump_size,
             ),
         }
         for bond in portfolio
@@ -133,7 +143,7 @@ def dv01_portfolio(
 def dv01_by_tenor_portfolio(
     portfolio: list[Bond],
     curve: pd.DataFrame,
-    freq: int = 2,
+    freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> pd.DataFrame:
     """Per-bond and portfolio-level DV01 by tenor -- mirrors
@@ -142,10 +152,14 @@ def dv01_by_tenor_portfolio(
     summed), one column per tenor. The table that sizes tenor-specific
     hedges at the portfolio level: how many currency units the whole book
     gains or loses if only, say, the 20Y point moves 1bp.
+
+    freq : None (default) prices each bond at its OWN bond.freq; an
+    explicit int overrides every bond to that one shared frequency.
     """
     per_bond = {
         bond.name: dv01_by_tenor_bond(
-            bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=freq, bump_size=bump_size
+            bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
+            freq=freq if freq is not None else bond.freq, bump_size=bump_size,
         )
         for bond in portfolio
     }

@@ -15,8 +15,10 @@ JGB issues.
 Output contract: load_portfolio() returns a list[Bond], one entry per
 bond, in config-file order. Each Bond has name, maturity_years (always
 resolved to a number -- see below), coupon_rate (decimal), face_value,
-weight (sums to 1.0 across the portfolio), plus four optional fields
-(isin, issue_date, maturity_date, tenor_class) defaulting to None.
+weight (sums to 1.0 across the portfolio), freq (always resolved to a
+positive int -- DEFAULT_COUPON_FREQ, semiannual, when a bond's entry
+doesn't specify one), plus four optional fields (isin, issue_date,
+maturity_date, tenor_class) defaulting to None.
 
 SCHEMA FORWARD-COMPATIBILITY (real bonds, later phase): the schema
 already accepts real-issue data, so a future version needs no migration.
@@ -29,6 +31,18 @@ takes an optional `valuation_date` (default: today) that this computation
 is measured from, so a pinned run stays reproducible. Not built yet: the
 real-issue data source itself, or ISIN format validation beyond
 "non-empty" -- only the schema and loader are ready to accept that data.
+
+PER-BOND `freq` (coupon payments per year): unlike the four optional
+fields above, this is not a real-bond-only concern -- every pricing
+function in models/bond_pricing.py and downstream (KRD, DV01, cash flow
+ladder, etc.) reads `bond.freq` per bond rather than one frequency shared
+by the whole portfolio, so a portfolio can mix payment frequencies (e.g.
+an annual-pay bond alongside semiannual JGBs) correctly. The one
+deliberate exception is models.zero_curve_impact.compute_par_vs_zero_impact,
+which requires ONE uniform freq across every bond, matching whatever
+frequency the zero curve being compared against was itself bootstrapped
+with -- see that module's own docstring for why per-bond freq would be
+actively wrong there.
 
 DATE FORMATS (issue_date, maturity_date, valuation_date): ISO YYYY-MM-DD
 is the canonical form and what Bond always stores, but the loader also
@@ -64,6 +78,20 @@ MAX_PLAUSIBLE_COUPON_RATE = 0.20  # 20%, decimal
 # Tolerance for the portfolio weights summing to 1.0, absorbing float
 # representation error from JSON parsing.
 WEIGHT_SUM_TOLERANCE = 1e-6
+
+# Coupon payments per year, used when a bond's config entry doesn't
+# specify its own `freq` -- semiannual, the JGB market standard. Unlike
+# isin/issue_date/maturity_date/tenor_class (which default to None because
+# "unknown" is a meaningful state for them), freq is always populated with
+# a real, usable value -- same reason maturity_years always is -- so every
+# consumer can read bond.freq unconditionally, with no None-check.
+DEFAULT_COUPON_FREQ = 2
+
+# A freq above this is almost certainly a data-entry mistake (e.g. a
+# fractional coupon rate's percent form typed into the wrong field) rather
+# than a real payment frequency -- monthly (12) is already an unusually
+# frequent coupon for a government bond.
+MAX_PLAUSIBLE_FREQ = 12
 
 # If a bond specifies BOTH maturity_years and maturity_date, they must
 # agree within this many years or loading raises -- catches a config entry
@@ -177,7 +205,12 @@ class Bond:
     isin / issue_date / maturity_date / tenor_class are OPTIONAL, default
     None. maturity_years is always populated -- either taken directly
     from the config or derived from maturity_date (see _resolve_maturity)
-    -- so every consumer can read it unconditionally either way."""
+    -- so every consumer can read it unconditionally either way. freq is
+    likewise always populated (DEFAULT_COUPON_FREQ, semiannual, when a
+    bond's config entry doesn't specify one) -- every per-bond pricing
+    call (price_bond, key_rate_duration_bond, dv01_bond, etc.) reads
+    bond.freq directly rather than a single frequency shared by the whole
+    portfolio, so a portfolio can mix payment frequencies across bonds."""
 
     name: str
     maturity_years: float
@@ -188,6 +221,7 @@ class Bond:
     issue_date: str | None = None
     maturity_date: str | None = None
     tenor_class: str | None = None
+    freq: int = DEFAULT_COUPON_FREQ
 
 
 def _parse_date(raw: str, *, error_prefix: str) -> date:
@@ -366,6 +400,18 @@ def load_portfolio(
                 ),
             ).isoformat()
 
+        freq_raw = raw.get("freq")
+        if freq_raw is None:
+            freq = DEFAULT_COUPON_FREQ
+        else:
+            try:
+                freq = int(freq_raw)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"{portfolio_path}: bond {name!r} (index {i}) has a "
+                    f"non-integer freq: {exc}"
+                ) from exc
+
         bonds.append(
             Bond(
                 name=name,
@@ -377,6 +423,7 @@ def load_portfolio(
                 issue_date=issue_date_str,
                 maturity_date=maturity_date_str,
                 tenor_class=str(tenor_class) if tenor_class is not None else None,
+                freq=freq,
             )
         )
 
@@ -425,6 +472,16 @@ def _validate_portfolio(bonds: list[Bond], source: Path) -> None:
         if b.weight < 0:
             raise ValueError(
                 f"{source}: bond {b.name!r} has negative weight ({b.weight})"
+            )
+        if b.freq <= 0:
+            raise ValueError(
+                f"{source}: bond {b.name!r} has non-positive freq ({b.freq})"
+            )
+        if b.freq > MAX_PLAUSIBLE_FREQ:
+            raise ValueError(
+                f"{source}: bond {b.name!r} has freq {b.freq} above the "
+                f"plausibility ceiling {MAX_PLAUSIBLE_FREQ} (monthly) -- "
+                "likely a data-entry mistake rather than a real payment frequency"
             )
         if b.isin is not None and not b.isin.strip():
             raise ValueError(f"{source}: bond {b.name!r} has an empty isin string")

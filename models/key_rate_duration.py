@@ -196,7 +196,7 @@ def effective_duration_bond(
 def key_rate_duration_portfolio(
     portfolio: list[Bond],
     curve: pd.DataFrame,
-    freq: int = 2,
+    freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> pd.DataFrame:
     """Per-bond and portfolio-level Key Rate Duration.
@@ -204,6 +204,12 @@ def key_rate_duration_portfolio(
     Takes an already-loaded portfolio and curve, mirroring price_portfolio
     -- easy to test, and reusable against a curve a caller repeatedly
     mutates elsewhere.
+
+    freq : None (default) prices each bond at its OWN bond.freq; an
+    explicit int overrides every bond to that one shared frequency (see
+    models.bond_pricing.price_portfolio's own docstring for why that
+    override exists -- e.g. required when curve is a zero curve, which
+    must be priced against at the freq it was bootstrapped with).
 
     Returns a DataFrame: one row per bond (by name, portfolio order) plus
     a final "portfolio_total" row, one column per curve tenor. The total
@@ -214,7 +220,8 @@ def key_rate_duration_portfolio(
 
     per_bond = {
         bond.name: key_rate_duration_bond(
-            bond.face_value, bond.coupon_rate, bond.maturity_years, curve_sorted, freq=freq, bump_size=bump_size
+            bond.face_value, bond.coupon_rate, bond.maturity_years, curve_sorted,
+            freq=freq if freq is not None else bond.freq, bump_size=bump_size,
         ).to_numpy()
         for bond in portfolio
     }

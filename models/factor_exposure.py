@@ -202,7 +202,7 @@ def compute_portfolio_factor_exposure(
     portfolio: list[Bond],
     curve: pd.DataFrame,
     pca_result: CurvePCAResult,
-    freq: int = 2,
+    freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> PortfolioFactorExposureResult:
     """Project `portfolio`'s KRD/DV01 profile onto `pca_result`'s
@@ -216,7 +216,12 @@ def compute_portfolio_factor_exposure(
         module docstring). Not `pca_result`'s own history -- that's yield
         CHANGES, already consumed when `pca_result` was fit.
     pca_result : a models.pca.compute_curve_pca(...) result.
-    freq, bump_size : passed through to key_rate_duration_portfolio /
+    freq : passed through to key_rate_duration_portfolio /
+        dv01_by_tenor_portfolio / price_portfolio unchanged -- None
+        (default) means each bond is priced at its own bond.freq; an
+        explicit int overrides every bond to that one shared frequency
+        (see models.bond_pricing.price_portfolio's own docstring).
+    bump_size : passed through to key_rate_duration_portfolio /
         dv01_by_tenor_portfolio unchanged.
 
     Returns

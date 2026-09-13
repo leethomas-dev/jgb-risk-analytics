@@ -82,6 +82,9 @@ from data.jgb_curve_loader import load_jgb_curve
 from models import day_count
 
 
+# PAR basis only -- the zero-basis equivalent is
+# models.bootstrap.discount_factor_at(), dispatched to from
+# discount_factors_at() below rather than living in this file.
 def curve_yield_at(curve: pd.DataFrame, maturity_years):
     """Interpolate (or extrapolate) curve['yield'] to an arbitrary maturity.
 
@@ -216,13 +219,21 @@ def price_bond(
 def price_portfolio(
     portfolio: list[Bond],
     curve: pd.DataFrame,
-    freq: int = 2,
+    freq: int | None = None,
 ) -> pd.DataFrame:
     """Price every bond in `portfolio` against one `curve`.
 
     Takes an already-loaded portfolio and curve rather than loading them
     itself -- no hidden file/network I/O, so this is easy to test and
     reusable against a curve a caller repeatedly bumps and reprices.
+
+    freq : None (default) prices each bond at its OWN bond.freq -- a
+        portfolio can mix payment frequencies across bonds. Pass an
+        explicit int to override every bond in the portfolio to that one
+        shared frequency instead -- needed, for instance, when discounting
+        against a zero curve, which requires the SAME freq it was
+        bootstrapped with for every bond priced against it (see
+        models.zero_curve_impact's own docstring).
 
     Returns a DataFrame with one row per bond, in portfolio order: name,
     maturity_years, coupon_rate, weight, price. A portfolio-level weighted
@@ -236,7 +247,8 @@ def price_portfolio(
             "coupon_rate": bond.coupon_rate,
             "weight": bond.weight,
             "price": price_bond(
-                bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=freq
+                bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
+                freq=freq if freq is not None else bond.freq,
             ),
         }
         for bond in portfolio
@@ -420,7 +432,7 @@ def dirty_price(
 
 def accrued_interest_portfolio(
     portfolio: list[Bond],
-    freq: int = 2,
+    freq: int | None = None,
     valuation_date: str | date | None = None,
     settlement_date: str | date | None = None,
     day_count_convention: str = day_count.ACT_365,
@@ -428,7 +440,11 @@ def accrued_interest_portfolio(
     """accrued_interest() for every bond in `portfolio`. Same row shape and
     ordering convention as price_portfolio(): one row per bond, in
     portfolio order, no total row -- a caller weights it the same way,
-    (df.weight * df.accrued_interest).sum()."""
+    (df.weight * df.accrued_interest).sum().
+
+    freq : None (default) uses each bond's OWN bond.freq; an explicit int
+    overrides every bond to that one shared frequency (see
+    price_portfolio's own docstring for why that override exists)."""
     rows = [
         {
             "name": bond.name,
@@ -439,7 +455,7 @@ def accrued_interest_portfolio(
                 bond.face_value,
                 bond.coupon_rate,
                 bond.maturity_years,
-                freq=freq,
+                freq=freq if freq is not None else bond.freq,
                 valuation_date=valuation_date,
                 settlement_date=settlement_date,
                 day_count_convention=day_count_convention,
@@ -455,7 +471,7 @@ def accrued_interest_portfolio(
 def dirty_price_portfolio(
     portfolio: list[Bond],
     curve: pd.DataFrame,
-    freq: int = 2,
+    freq: int | None = None,
     valuation_date: str | date | None = None,
     settlement_date: str | date | None = None,
     day_count_convention: str = day_count.ACT_365,
@@ -465,7 +481,11 @@ def dirty_price_portfolio(
     weight, clean_price, accrued_interest, dirty_price]. Computed by
     joining the two existing functions' own output on bond name/order
     (both already iterate `portfolio` in the same order), not by
-    reimplementing either calculation."""
+    reimplementing either calculation.
+
+    freq : forwarded unchanged to both -- None (default) means each bond
+    prices and accrues at its own bond.freq; an explicit int overrides
+    every bond to that one shared frequency."""
     clean = price_portfolio(portfolio, curve, freq=freq)
     accrued = accrued_interest_portfolio(
         portfolio,

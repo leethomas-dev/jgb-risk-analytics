@@ -25,8 +25,9 @@ between/beyond the curve's known points), `price_bond()` (one bond),
 
 **Output contract:** `price_bond(face_value, coupon_rate, maturity_years,
 curve, freq=2) -> float`, price per `face_value` of face amount.
-`price_portfolio(portfolio, curve, freq=2) -> pd.DataFrame`, one row per
-bond. A portfolio-level weighted price is `(df.weight * df.price).sum()`.
+`price_portfolio(portfolio, curve, freq=None) -> pd.DataFrame`, one row
+per bond. A portfolio-level weighted price is `(df.weight *
+df.price).sum()`.
 
 ---
 
@@ -75,13 +76,26 @@ for this kind of tool, not an oversight. It's precise enough for the
 purpose here, but a reviewer should know it isn't the same as a
 fully rigorous derivation (§3.2).
 
-### 1.3 `price_portfolio(portfolio, curve, freq=2)`
+### 1.3 `price_portfolio(portfolio, curve, freq=None)`
 
 Prices every bond in a portfolio against one curve, returning one row
 each. Takes both as plain inputs rather than loading them itself, so it's
 easy to test and easy to reuse against a curve that's about to be modified
 (needed by Phase 3's sensitivity calculations, which reprice the same
 bond many times against slightly changed curves).
+
+**`freq=None` prices each bond at its own `Bond.freq`** (Phase 2A
+addition) rather than one frequency shared by the whole portfolio — a
+portfolio can mix payment frequencies across bonds, and each one prices
+correctly at its own. Pass an explicit `freq` to override every bond to
+that one shared frequency instead; this is still needed in at least one
+place — `models/zero_curve_impact.py`'s par-vs-zero comparison requires
+every bond discounted at the *same* frequency its zero curve was
+bootstrapped with, so per-bond freq would be wrong there specifically
+(that module's own docstring has the reasoning). Every other
+`_portfolio`-suffixed function downstream of this one (Key Rate Duration,
+DV01, the cash flow ladder, bond analytics, factor exposure) follows the
+same `None` = per-bond, explicit-int = override convention.
 
 ---
 

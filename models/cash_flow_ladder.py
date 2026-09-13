@@ -134,7 +134,6 @@ class CashFlowLadderResult:
     """
 
     valuation_date: date
-    freq: int
     threshold_years: float
     ladder: pd.DataFrame
 
@@ -166,7 +165,7 @@ class CashFlowLadderResult:
 def compute_cash_flow_ladder(
     portfolio: list[Bond],
     curve: pd.DataFrame,
-    freq: int = 2,
+    freq: int | None = None,
     valuation_date: str | date | None = None,
     threshold_years: float = DEFAULT_ULTRA_LONG_THRESHOLD_YEARS,
 ) -> CashFlowLadderResult:
@@ -176,9 +175,20 @@ def compute_cash_flow_ladder(
 
     Takes an already-loaded portfolio and curve, mirroring price_portfolio
     / key_rate_duration_portfolio -- no hidden file/network I/O.
+
+    freq : None (default) builds each bond's own cash flows at its OWN
+    bond.freq -- a portfolio can mix payment frequencies. An explicit int
+    overrides every bond to that one shared frequency (see
+    models.bond_pricing.price_portfolio's own docstring for why that
+    override exists). Not stored on the result -- since bonds can now
+    differ, there's no longer one single freq meaningful enough to record
+    at the portfolio level.
     """
     valuation = _resolve_date(valuation_date)
-    per_bond_frames = [_bond_cash_flows(bond, valuation, curve, freq) for bond in portfolio]
+    per_bond_frames = [
+        _bond_cash_flows(bond, valuation, curve, freq if freq is not None else bond.freq)
+        for bond in portfolio
+    ]
 
     all_flows = pd.concat(per_bond_frames, ignore_index=True)
     ladder = (
@@ -195,7 +205,7 @@ def compute_cash_flow_ladder(
     ladder = ladder[LADDER_COLUMNS]
 
     return CashFlowLadderResult(
-        valuation_date=valuation, freq=freq, threshold_years=threshold_years, ladder=ladder
+        valuation_date=valuation, threshold_years=threshold_years, ladder=ladder
     )
 
 

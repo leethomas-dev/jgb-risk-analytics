@@ -90,6 +90,11 @@ level version of the hedge-sizing table in §1.3. The two tables are
 cross-checked against each other: fully summing either one lands on the
 same overall figure.
 
+Both take `freq=None` by default, computing each bond at its own
+`Bond.freq` rather than one frequency shared by the whole portfolio
+(`docs/phase_2b_documentation.md §1.3`); pass an explicit `freq` to
+override every bond to one shared frequency instead.
+
 ### 1.6 `__main__`
 
 Prints both tables plus the §2 validation check on every real run, so a

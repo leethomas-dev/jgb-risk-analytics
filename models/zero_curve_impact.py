@@ -220,6 +220,21 @@ def compute_par_vs_zero_impact(
     effective_duration_bond/key_rate_duration_portfolio, or
     models.dv01.dv01_bond/dv01_by_tenor_portfolio, called once per curve
     basis (module docstring).
+
+    freq : deliberately a SINGLE required frequency for the whole
+    portfolio here, NOT each bond's own bond.freq (contrast
+    key_rate_duration_portfolio/dv01_by_tenor_portfolio/price_portfolio,
+    which default to per-bond freq -- see their own docstrings). This
+    function's whole comparison only makes sense if every bond is
+    discounted at the SAME freq the zero curve was itself bootstrapped
+    with (bootstrap_zero_curve(par_curve, freq=freq) just below) -- a
+    bond priced at a different freq than that would be internally
+    inconsistent with the zero rates it's being discounted against,
+    silently producing a wrong par-vs-zero comparison rather than a
+    genuine one. If this project's portfolio ever mixes payment
+    frequencies across bonds, this function would need its own
+    resolution for that (e.g. a separate zero curve per distinct freq
+    present), not a switch to per-bond freq.
     """
     zero_curve = bootstrap_zero_curve(par_curve, freq=freq)
     aligned_zero = _aligned_zero_curve(par_curve, zero_curve)
