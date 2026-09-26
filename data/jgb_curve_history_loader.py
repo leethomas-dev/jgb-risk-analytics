@@ -30,6 +30,18 @@ applied to the whole raw history (see _load_raw_history):
    Fetched 2026-09-04; re-anchor before demo/interview use exactly like
    the Phase 1 snapshot (docs/phase_4a_documentation.md).
 
+CURRENT-MONTH TOP-UP (Phase 4E, docs/phase_4e_documentation.md;
+prefer_live=True only). MOF only adds a month to the
+historical file after that month ends, so on its own this history always
+stops at the end of last month. _extend_with_recent_rows fills the gap
+from MOF's current-month file (the same one jgb_curve_loader.py reads),
+which has every day of the month so far on the same tenor grid. Rows seen
+there are also kept in a small local cache, so days from a month that has
+just ended aren't lost while MOF's historical file catches up. A month is
+only appended if the month before it is known to be complete -- a missing
+week is never silently turned into one fake "daily" change (see
+_extend_with_recent_rows).
+
 RAGGED TENOR HISTORY -- the central design problem this module solves,
 in two steps applied after the lookback window is sliced (see
 _apply_ragged_tenor_policy):
@@ -78,14 +90,19 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from io import StringIO
 from pathlib import Path
 
 import pandas as pd
 import requests
 
-from data.jgb_curve_loader import _find_mof_header_row_index, _MOF_TENOR_COLUMNS
+from data.jgb_curve_loader import (
+    LIVE_REQUEST_TIMEOUT_SECONDS,
+    MOF_CSV_URL,
+    _find_mof_header_row_index,
+    _MOF_TENOR_COLUMNS,
+)
 
 MOF_HISTORY_CSV_URL = (
     "https://www.mof.go.jp/english/policy/jgbs/reference/interest_rate/"
@@ -108,6 +125,11 @@ HISTORY_CACHE_META_PATH = Path(__file__).with_name("_jgb_curve_history_cache.met
 # docs/phase_4a_documentation.md for the re-anchor policy.
 HISTORY_SNAPSHOT_PATH = Path(__file__).with_name("jgb_curve_history_snapshot.csv")
 HISTORY_SNAPSHOT_FETCHED_DATE = "2026-09-04"
+
+# Local cache of rows taken from MOF's CURRENT-MONTH file (see
+# _extend_with_recent_rows), stored in MOF's own CSV layout so it is read
+# back through the same parser. Machine-local, gitignored.
+RECENT_CACHE_PATH = Path(__file__).with_name("_jgb_curve_recent_cache.csv")
 
 # Plausibility band for a decimal JGB yield ANYWHERE in the published
 # history -- much wider than load_jgb_curve_loader's [-1%, +10%], which is
@@ -132,7 +154,9 @@ MIN_ROWS_FOR_VALID_PULL = 250
 _DAYS_PER_YEAR = 365.25
 
 
-def _parse_mof_history_csv(text: str, *, verbose: bool = False) -> pd.DataFrame:
+def _parse_mof_history_csv(
+    text: str, *, verbose: bool = False, min_rows: int = MIN_ROWS_FOR_VALID_PULL
+) -> pd.DataFrame:
     """Parse MOF's historical CSV text into a wide, RAW (NaN-containing)
     decimal-yield DataFrame: DatetimeIndex (ascending, name "date"),
     columns = every recognized tenor (float years, ascending, name
@@ -149,7 +173,9 @@ def _parse_mof_history_csv(text: str, *, verbose: bool = False) -> pd.DataFrame:
 
     Raises ValueError on any structural failure -- no header row, no
     'Date' column, no parseable date rows, or too few usable tenors/rows
-    (see MIN_TENORS_FOR_VALID_PULL / MIN_ROWS_FOR_VALID_PULL).
+    (see MIN_TENORS_FOR_VALID_PULL / MIN_ROWS_FOR_VALID_PULL). `min_rows`
+    is lowered only for the current-month file and the recent-rows cache,
+    which hold a few weeks, not years.
     """
     lines = text.splitlines()
     header_idx = _find_mof_header_row_index(lines)
@@ -194,16 +220,15 @@ def _parse_mof_history_csv(text: str, *, verbose: bool = False) -> pd.DataFrame:
     df = df.reindex(sorted(df.columns), axis=1)
     df.columns.name = "maturity_years"
 
-    if len(df) < MIN_ROWS_FOR_VALID_PULL:
+    if len(df) < min_rows:
         raise ValueError(
-            f"MOF historical CSV parsed but yielded too few rows "
-            f"({len(df)} < {MIN_ROWS_FOR_VALID_PULL})"
+            f"MOF historical CSV parsed but yielded too few rows ({len(df)} < {min_rows})"
         )
 
     return df
 
 
-def _validate_history_df_raw(df: pd.DataFrame) -> None:
+def _validate_history_df_raw(df: pd.DataFrame, *, min_rows: int = MIN_ROWS_FOR_VALID_PULL) -> None:
     """Raise ValueError unless df is a plausible raw (NaN-permitting)
     historical curve matrix. Structural checks mirror
     jgb_curve_loader._validate_curve_df; the yield-range check uses the
@@ -217,7 +242,7 @@ def _validate_history_df_raw(df: pd.DataFrame) -> None:
         raise ValueError("history has duplicate dates")
     if len(df.columns) < MIN_TENORS_FOR_VALID_PULL:
         raise ValueError(f"history has only {len(df.columns)} tenor column(s)")
-    if len(df) < MIN_ROWS_FOR_VALID_PULL:
+    if len(df) < min_rows:
         raise ValueError(f"history has only {len(df)} row(s)")
 
     values = df.to_numpy()
@@ -381,6 +406,236 @@ def _load_raw_history(*, prefer_live: bool, verbose: bool) -> tuple[pd.DataFrame
     return snapshot_df, "snapshot"
 
 
+def _fetch_current_month_rows() -> pd.DataFrame:
+    """Download MOF's current-month file and parse it with the shared
+    parser. Raises on any failure (including a month with no rows yet)."""
+    response = requests.get(MOF_CSV_URL, timeout=LIVE_REQUEST_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    df = _parse_mof_history_csv(response.text, min_rows=1)
+    _validate_history_df_raw(df, min_rows=1)
+    return df
+
+
+def _read_recent_cache(*, verbose: bool) -> pd.DataFrame | None:
+    """Rows saved by earlier runs, or None if there is no usable cache."""
+    if not RECENT_CACHE_PATH.exists():
+        return None
+    try:
+        df = _parse_mof_history_csv(RECENT_CACHE_PATH.read_text(), min_rows=1)
+        _validate_history_df_raw(df, min_rows=1)
+    except Exception as exc:  # noqa: BLE001 - a bad cache is just ignored
+        if verbose:
+            print(
+                f"[jgb_curve_history_loader] Recent-rows cache unusable ({exc!r}); ignoring it.",
+                file=sys.stderr,
+            )
+        return None
+    return df
+
+
+def _write_recent_cache(df: pd.DataFrame) -> None:
+    """Atomically save `df` in MOF's own CSV layout (percent yields,
+    YYYY/MM/DD dates, "-" for a missing cell)."""
+    tenor_labels = {float(t): col for col, t in _MOF_TENOR_COLUMNS.items()}
+    lines = ["Interest Rate (recent rows cache)", "Date," + ",".join(tenor_labels[c] for c in df.columns)]
+    for date, row in df.iterrows():
+        cells = ["-" if pd.isna(v) else f"{round(v * 100.0, 6):g}" for v in row]
+        lines.append(f"{date.strftime('%Y/%m/%d')}," + ",".join(cells))
+
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(RECENT_CACHE_PATH.parent), prefix="._jgb_recent_cache_", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write("\n".join(lines) + "\n")
+        os.replace(tmp_name, RECENT_CACHE_PATH)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def _month_is_complete_through(date: pd.Timestamp) -> bool:
+    """True if `date` is the last trading day of its month: no weekday
+    left after it in that month, other than Dec 31 (a JGB market holiday).
+    Without a holiday calendar, a month ending on some other holiday reads
+    as incomplete -- the safe direction: the next month waits for MOF's
+    historical file instead of skipping days."""
+    month_end = date + pd.offsets.MonthEnd(0)
+    remaining = pd.bdate_range(date + pd.Timedelta(days=1), month_end)
+    return all(d.month == 12 and d.day == 31 for d in remaining)
+
+
+def _contiguous_recent_rows(last_history_date: pd.Timestamp, recent: pd.DataFrame) -> pd.DataFrame:
+    """The rows of `recent` (all after last_history_date) that can be
+    appended without leaving a gap. Rows arrive a month at a time from
+    MOF's current-month file, which always holds that month's days so
+    far, so gaps can only happen between months: a month is accepted only
+    if it directly follows the last accepted date's month AND that month is
+    complete. Otherwise stop there -- a missing week would otherwise become
+    one fake "daily" change in the PCA."""
+    accepted = []
+    previous = last_history_date
+    for period, month_rows in recent.groupby(recent.index.to_period("M"), sort=True):
+        if period != previous.to_period("M"):
+            if period != previous.to_period("M") + 1 or not _month_is_complete_through(previous):
+                break
+        accepted.append(month_rows)
+        previous = month_rows.index.max()
+    if not accepted:
+        return recent.iloc[0:0]
+    return pd.concat(accepted)
+
+
+def _extend_with_recent_rows(
+    df_raw: pd.DataFrame, source_tier: str, *, verbose: bool
+) -> tuple[pd.DataFrame, int, dict]:
+    """Append days MOF's historical file doesn't have yet, from the
+    current-month file plus the local recent-rows cache (module
+    docstring). Returns (extended history, number of rows appended,
+    status). status["current_month_pull"] is "ok" or "failed", and
+    status["held_back"] is the (first, last) ISO dates of rows held back
+    after a gap between months, or None -- so a caller can tell the user
+    why the history stops where it does. Never raises: any failure just
+    means nothing is appended."""
+    last_date = df_raw.index.max()
+
+    status = {"current_month_pull": "ok", "held_back": None}
+    fresh = None
+    try:
+        fresh = _fetch_current_month_rows()
+    except Exception as exc:  # noqa: BLE001 - optional top-up, never fatal
+        status["current_month_pull"] = "failed"
+        if verbose:
+            print(
+                f"[jgb_curve_history_loader] Current-month MOF pull failed ({exc!r}); "
+                "using cached recent rows only.",
+                file=sys.stderr,
+            )
+    cached = _read_recent_cache(verbose=verbose)
+
+    # Fresh rows win over cached ones for the same date.
+    parts = [p for p in (cached, fresh) if p is not None]
+    if not parts:
+        return df_raw, 0, status
+    recent = pd.concat(parts)
+    recent = recent.loc[~recent.index.duplicated(keep="last")].sort_index()
+    recent = recent.reindex(columns=df_raw.columns)
+
+    # Save what we've seen. Rows the historical file now covers are dropped,
+    # but only when that file is a fresh pull -- a stale fallback tier
+    # shouldn't make us forget rows it doesn't have.
+    to_save = recent.loc[recent.index > last_date] if source_tier == "live" else recent
+    if fresh is not None and not to_save.empty:
+        try:
+            _write_recent_cache(to_save)
+        except Exception as exc:  # noqa: BLE001 - a cache write must not break the load
+            if verbose:
+                print(
+                    f"[jgb_curve_history_loader] Could not update recent-rows cache ({exc!r}).",
+                    file=sys.stderr,
+                )
+
+    # A new row must have every tenor the historical file's last row has,
+    # or the ragged-tenor policy would drop that tenor for the whole window.
+    required = df_raw.columns[df_raw.loc[last_date].notna()]
+    candidates = recent.loc[recent.index > last_date]
+    complete = candidates.dropna(subset=required)
+    n_incomplete = len(candidates) - len(complete)
+    appended = _contiguous_recent_rows(last_date, complete)
+    held_back = complete.loc[~complete.index.isin(appended.index)]
+    if not held_back.empty:
+        status["held_back"] = (
+            held_back.index.min().date().isoformat(),
+            held_back.index.max().date().isoformat(),
+        )
+
+    if verbose:
+        if n_incomplete:
+            print(
+                f"[jgb_curve_history_loader] Skipped {n_incomplete} recent row(s) missing a tenor.",
+                file=sys.stderr,
+            )
+        if len(appended) < len(complete):
+            print(
+                f"[jgb_curve_history_loader] Held back {len(complete) - len(appended)} recent "
+                "row(s) after a gap between months; they'll be used once MOF's historical "
+                "file fills it.",
+                file=sys.stderr,
+            )
+        if len(appended):
+            print(
+                f"[jgb_curve_history_loader] Appended {len(appended)} recent row(s) "
+                f"from MOF's current-month file/cache: {appended.index.min().date()} to "
+                f"{appended.index.max().date()}.",
+                file=sys.stderr,
+            )
+
+    if appended.empty:
+        return df_raw, 0, status
+    return pd.concat([df_raw, appended]), len(appended), status
+
+
+def missing_recent_days_note(
+    history: pd.DataFrame, latest_published: date | None, today: date
+) -> str | None:
+    """A plain-English warning if `history` stops before the latest MOF
+    data, or None if nothing is missing. For the dashboard (Phase 4E).
+
+    latest_published : MOF's latest published date if known (the live
+        current curve's as-of date), else None -- then every business
+        day up to `today` is assumed to be published, and the note says
+        it couldn't check.
+    The reason comes from the attrs load_jgb_curve_history sets:
+    source_tier, current_month_pull, recent_rows_held_back.
+    """
+    last = history.index.max()
+    first_missing = (last + pd.offsets.BDay(1)).date()
+    gap_end = latest_published or pd.offsets.BDay().rollback(pd.Timestamp(today)).date()
+    if first_missing > gap_end:
+        return None
+
+    missing = f"{first_missing} to {gap_end}" if first_missing < gap_end else f"{first_missing}"
+    checked = (
+        ""
+        if latest_published
+        else " (MOF couldn't be reached to check, so this assumes it published every business day up to today)"
+    )
+
+    reasons = []
+    tier = history.attrs.get("source_tier")
+    pull = history.attrs.get("current_month_pull")
+    held_back = history.attrs.get("recent_rows_held_back")
+    if pull == "skipped":
+        reasons.append("live data is turned off (prefer_live=False)")
+    else:
+        if tier and tier != "live":
+            reasons.append(f"MOF's historical file couldn't be downloaded, so a saved {tier} copy is used")
+        if pull == "failed":
+            reasons.append(
+                "the current-month download from MOF failed, and this machine has no saved copy of those days"
+            )
+        if held_back:
+            reasons.append(
+                f"{held_back[0]} to {held_back[1]} are saved on this machine but held back, because some days "
+                "before them weren't saved before the month ended; they'll be added once MOF puts last month "
+                "in its historical file"
+            )
+        if pull == "ok" and not held_back and tier == "live":
+            reasons.append(
+                "MOF's historical file doesn't include those days yet, and this machine didn't save them from "
+                "the current-month file before it moved on to a new month; they'll be added once MOF updates "
+                "its historical file"
+            )
+
+    return (
+        f"Curve history is missing {missing}{checked}. PCA factors, daily scores and P&L attribution stop "
+        f"at {last.date()}. Why: " + "; ".join(reasons) + "."
+    )
+
+
 def _apply_lookback_window(df_raw: pd.DataFrame, lookback_years: float | None) -> pd.DataFrame:
     """Slice df_raw to its last `lookback_years` years, measured back from
     the LATEST date actually present in df_raw (not from today -- the
@@ -478,8 +733,9 @@ def load_jgb_curve_history(
         today's full 15-tenor grid should pass a window that starts after
         2007-11-06 (40Y's introduction) -- e.g. a few years.
     prefer_live, verbose : same meaning as load_jgb_curve's (Phase 1):
-        prefer_live=True (default) tries live -> cache -> snapshot;
-        prefer_live=False skips straight to the versioned snapshot, for a
+        prefer_live=True (default) tries live -> cache -> snapshot, then
+        tops up the current month (module docstring); prefer_live=False
+        skips straight to the versioned snapshot with no top-up, for a
         deterministic/reproducible run. verbose controls the stderr log.
 
     Returns
@@ -495,6 +751,12 @@ def load_jgb_curve_history(
         nothing usable after the ragged-tenor policy.
     """
     df_raw, source_tier = _load_raw_history(prefer_live=prefer_live, verbose=verbose)
+    n_recent = 0
+    recent_status = {"current_month_pull": "skipped", "held_back": None}
+    if prefer_live:
+        df_raw, n_recent, recent_status = _extend_with_recent_rows(
+            df_raw, source_tier, verbose=verbose
+        )
 
     df_windowed = _apply_lookback_window(df_raw, lookback_years)
     if df_windowed.empty:
@@ -506,6 +768,9 @@ def load_jgb_curve_history(
 
     df_final = _apply_ragged_tenor_policy(df_windowed, verbose=verbose)
     df_final.attrs["source_tier"] = source_tier
+    df_final.attrs["recent_rows_appended"] = n_recent
+    df_final.attrs["current_month_pull"] = recent_status["current_month_pull"]
+    df_final.attrs["recent_rows_held_back"] = recent_status["held_back"]
     df_final.attrs["lookback_years"] = lookback_years
     return df_final
 

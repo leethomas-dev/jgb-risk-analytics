@@ -33,6 +33,8 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -40,7 +42,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from config.portfolio_loader import Bond, load_portfolio
-from data.jgb_curve_history_loader import load_jgb_curve_history
+from data.jgb_curve_history_loader import load_jgb_curve_history, missing_recent_days_note
 from data.jgb_curve_loader import CurveSource, load_jgb_curve_with_source
 from models.bond_analytics import bond_analytics_portfolio
 from models.bond_pricing import dirty_price_portfolio
@@ -297,6 +299,35 @@ def _cached_curve_fits(zero_curve: pd.DataFrame):
     return fit_nelson_siegel(zero_curve), fit_svensson(zero_curve)
 
 
+# When the cached market data was fetched. Cached itself, so it's recorded
+# once alongside the loaders above and cleared together with them.
+@st.cache_data
+def _cached_fetched_at() -> datetime:
+    return datetime.now(ZoneInfo("Asia/Tokyo"))
+
+
+# Phase 4E: the caches above never expire on their own, so without this a
+# long-running app keeps showing whatever MOF had when it first loaded.
+# Clears every cached step, not just the two network fetches: the others
+# are keyed on the curve/history, so leaving them would only pile up
+# entries for data that's no longer shown. st.cache_data is shared by all
+# viewers, so a refresh updates the data for everyone.
+_CACHED_MARKET_DATA = (
+    _cached_curve_source,
+    _cached_history,
+    _cached_pca,
+    _cached_pc_scores,
+    _cached_bootstrap,
+    _cached_curve_fits,
+    _cached_fetched_at,
+)
+
+
+def _refresh_market_data() -> None:
+    for cached in _CACHED_MARKET_DATA:
+        cached.clear()
+
+
 # ---------------------------------------------------------------------------
 # Portfolio: read through the Phase 2A loader, never a hardcoded bond list.
 # Weight edits are re-validated through THAT SAME loader (load_portfolio),
@@ -431,6 +462,43 @@ curve = curve_source.curve
 
 history = _cached_history(PCA_LOOKBACK_YEARS, PREFER_LIVE)
 pca_result = _cached_pca(history)
+fetched_at = _cached_fetched_at()
+
+st.sidebar.divider()
+st.sidebar.subheader("Market data")
+# One date when the current curve and the daily history agree (the normal
+# case); both, in plain words, only when they don't.
+history_end = history.index.max().date().isoformat()
+if history_end == curve_source.as_of:
+    data_dates = f"Latest MOF rates: **{curve_source.as_of}** ({curve_source.source_tier})."
+else:
+    data_dates = (
+        f"Latest MOF rates: **{curve_source.as_of}** ({curve_source.source_tier}), but the daily "
+        f"history behind sections 5 and 7 only goes up to **{history_end}** (see the warning)."
+    )
+st.sidebar.caption(f"{data_dates} Fetched {fetched_at:%Y-%m-%d %H:%M} JST.")
+st.sidebar.button(
+    "Refresh market data",
+    on_click=_refresh_market_data,
+    width="stretch",
+    help="Re-download the latest curve and history from Japan's Ministry of Finance (MOF). "
+    "MOF publishes once per business day, so more than one refresh a day rarely changes anything.",
+)
+
+# Phase 4E: say plainly when the data isn't the latest, and why -- e.g. a
+# fresh machine where MOF can't be reached and nothing was saved earlier.
+if curve_source.source_tier != "live":
+    st.warning(
+        f"Couldn't reach MOF for the latest curve, so sections 1-4 and 6 use a saved "
+        f"{curve_source.source_tier} curve from **{curve_source.as_of}**. Try **Refresh market data** later."
+    )
+history_note = missing_recent_days_note(
+    history,
+    latest_published=pd.Timestamp(curve_source.as_of).date() if curve_source.source_tier == "live" else None,
+    today=datetime.now(ZoneInfo("Asia/Tokyo")).date(),
+)
+if history_note:
+    st.warning(history_note + " Try **Refresh market data** later.")
 
 zero_curve = _cached_bootstrap(curve)
 ns_fit, sv_fit = _cached_curve_fits(zero_curve)

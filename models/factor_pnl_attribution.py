@@ -218,7 +218,7 @@ def compute_factor_pnl_attribution(
 
 if __name__ == "__main__":
     portfolio = load_portfolio()
-    history = load_jgb_curve_history(lookback_years=DEFAULT_PCA_LOOKBACK_YEARS, prefer_live=False)
+    history = load_jgb_curve_history(lookback_years=DEFAULT_PCA_LOOKBACK_YEARS)
     pca_result = compute_curve_pca(history)
     score_result = compute_pc_scores(history, pca_result)
 

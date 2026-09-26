@@ -26,6 +26,7 @@ model validator can review a decision without re-deriving it from the diff.
 | 4.6C  | [`phase_4_6c_documentation.md`](phase_4_6c_documentation.md) | `models/cash_flow_ladder.py` — `compute_cash_flow_ladder()` / `plot_cash_flow_ladder()`, the portfolio's coupon/principal cash flows by date, nominal and present value | Done   |
 | 4.7   | [`phase_4_7_documentation.md`](phase_4_7_documentation.md) | `app.py` — a Streamlit dashboard over the existing analytics modules, plus deployment readiness for Streamlit Community Cloud | Done   |
 | 4D    | [`phase_4d_documentation.md`](phase_4d_documentation.md) | `models/pc_scores.py` — `compute_pc_scores()`, daily PCA factor scores; `models/factor_pnl_attribution.py` — `compute_factor_pnl_attribution()`, daily factor P&L attribution with a reported residual | Done   |
+| 4E    | [`phase_4e_documentation.md`](phase_4e_documentation.md) | `data/jgb_curve_history_loader.py` (extended) — `_extend_with_recent_rows()`, tops up the curve history with MOF's current-month file, cached locally across month rollovers; `app.py` (extended) — a Refresh market data button | Done   |
 
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded

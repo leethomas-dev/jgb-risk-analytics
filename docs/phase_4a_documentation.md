@@ -34,6 +34,10 @@ prefer_live=True, verbose=True) -> pd.DataFrame` — a `DatetimeIndex`
 yields as decimals, **no missing values**. Metadata about what was kept
 or dropped is attached to `df.attrs` (see §1.3).
 
+Phase 4E later extended this loader to add the current month's days,
+which MOF's historical file doesn't have yet
+(`docs/phase_4e_documentation.md`).
+
 ---
 
 ## 1. What each piece does, and why

@@ -223,7 +223,7 @@ def compute_pc_scores(history: pd.DataFrame, pca_result: CurvePCAResult) -> PCSc
 
 
 if __name__ == "__main__":
-    history = load_jgb_curve_history(lookback_years=DEFAULT_PCA_LOOKBACK_YEARS, prefer_live=False)
+    history = load_jgb_curve_history(lookback_years=DEFAULT_PCA_LOOKBACK_YEARS)
     pca_result = compute_curve_pca(history)
     result = compute_pc_scores(history, pca_result)
 

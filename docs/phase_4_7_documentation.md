@@ -115,6 +115,10 @@ button click, an edited table cell). Five loaders are wrapped in
 | `_cached_bootstrap` | `bootstrap_zero_curve` | Feeds the curve-fitting step below |
 | `_cached_curve_fits` | `fit_nelson_siegel` + `fit_svensson` | Two bounded grid searches (§4.5B docs) — the most CPU-bound step in the whole pipeline |
 
+These caches don't expire on their own. Phase 4E added a **Refresh
+market data** button in the sidebar that clears them
+(`docs/phase_4e_documentation.md` §4).
+
 **What deliberately recomputes on every rerun, uncached:** every
 portfolio-dependent call (`dv01_portfolio`, `bond_analytics_portfolio`,
 `compute_ultra_long_profile`, `dirty_price_portfolio`,
