@@ -125,6 +125,20 @@ class CurvePCAResult:
         columns = tenors (name "maturity_years") -- each row a unit-norm
         eigenvector: how much that component moves each tenor, relative
         to the others, for a one-unit move in the component's own score.
+    full_loadings : the SAME sign-fixed eigenvector basis as `loadings`,
+        but ALL n_tenors components, not just the top n_components kept --
+        `loadings` is exactly `full_loadings.iloc[:n_components]`. An
+        orthonormal basis for the full tenor space. Added for Phase 4D
+        (models/pc_scores.py's completeness/reconstruction check, which
+        needs the full basis to reconstruct a change vector exactly, not
+        just its top few components) -- not used by anything in Phase
+        4B/4C itself. Defaults to None: compute_curve_pca (below) always
+        populates it, but a caller constructing a CurvePCAResult directly
+        with only the pre-Phase-4D fields (e.g. an analytic/synthetic
+        result for a test, as tests/test_zero_curve_impact.py's own
+        _synthetic_pca_result does) still works unchanged -- only
+        functions that actually need the full basis (models/pc_scores.py)
+        require it to be populated.
     """
 
     lookback_years: float | None
@@ -137,6 +151,7 @@ class CurvePCAResult:
     explained_variance_ratio: np.ndarray
     explained_variance_ratio_all: np.ndarray
     loadings: pd.DataFrame
+    full_loadings: pd.DataFrame | None = None
 
     @property
     def component_std(self) -> np.ndarray:
@@ -249,11 +264,12 @@ def compute_curve_pca(
     eigenvalues_all = (S**2) / (n_obs - 1)  # sample variance (ddof=1), matches np.cov's default
     ratio_all = eigenvalues_all / eigenvalues_all.sum()
 
-    loadings = pd.DataFrame(
-        Vt[:n_components],
-        index=pd.RangeIndex(1, n_components + 1, name="component"),
+    full_loadings = pd.DataFrame(
+        Vt,
+        index=pd.RangeIndex(1, n_tenors + 1, name="component"),
         columns=pd.Index(tenors, name="maturity_years"),
     )
+    loadings = full_loadings.iloc[:n_components]
 
     return CurvePCAResult(
         lookback_years=history.attrs.get("lookback_years"),
@@ -266,6 +282,7 @@ def compute_curve_pca(
         explained_variance_ratio=ratio_all[:n_components],
         explained_variance_ratio_all=ratio_all,
         loadings=loadings,
+        full_loadings=full_loadings,
     )
 
 

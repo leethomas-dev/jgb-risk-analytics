@@ -49,7 +49,9 @@ from models.cash_flow_ladder import COUPON_COLOR, PRINCIPAL_COLOR, compute_cash_
 from models.curve_fitting import fit_nelson_siegel, fit_svensson
 from models.dv01 import dv01_portfolio
 from models.factor_exposure import compute_portfolio_factor_exposure
+from models.factor_pnl_attribution import compute_factor_pnl_attribution
 from models.pca import DEFAULT_PCA_LOOKBACK_YEARS, compute_curve_pca
+from models.pc_scores import compute_pc_scores
 from models.ultra_long_profile import NORMAL_COLOR, ULTRA_LONG_COLOR, compute_ultra_long_profile
 
 GITHUB_URL = "https://github.com/leethomas-dev/jgb-risk-analytics"
@@ -145,7 +147,7 @@ h1, h2, h3 {
 [data-testid="stMetricValue"] {
   font-family: 'JetBrains Mono', monospace !important;
   font-weight: 600;
-  font-size: 1.9rem !important;
+  font-size: 1.3rem !important;
   color: var(--text) !important;
 }
 [data-testid="stMetricLabel"] {
@@ -155,6 +157,31 @@ h1, h2, h3 {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted) !important;
+}
+
+/* Streamlit's own default styling truncates a metric's label (and, in a
+   narrow column, its value) with an ellipsis ("...") rather than wrapping
+   it -- the label element and its inner text node both carry
+   white-space:nowrap / overflow:hidden / text-overflow:ellipsis out of
+   the box. On a row of several metric columns (this dashboard's PC
+   exposure and factor-attribution rows included) plus the sidebar open,
+   a standard laptop's viewport leaves each column too narrow for a label
+   like "PC1 (often 'level')" or "Unexplained (residual)" to fit on one
+   line -- WITHOUT this override, Streamlit hides the overflow behind
+   "...". Overriding to wrap (grow the card taller, never wider) means
+   the full label is always readable and nothing needs a wider column or
+   a horizontal scrollbar to see it.
+   ':is(...)' targets the label/value elements themselves AND every
+   descendant, since Streamlit sometimes applies the truncation rule to
+   an inner span/p rather than the [data-testid] element directly. */
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] :is(p, span, div),
+[data-testid="stMetricValue"],
+[data-testid="stMetricValue"] :is(p, span, div) {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  word-break: break-word !important;
 }
 
 .stButton button {
@@ -245,6 +272,19 @@ def _cached_history(lookback_years: float, prefer_live: bool) -> pd.DataFrame:
 @st.cache_data(show_spinner="Fitting PCA risk factors...")
 def _cached_pca(history: pd.DataFrame):
     return compute_curve_pca(history)
+
+
+# Keyed on `history` alone (not on the CurvePCAResult it also needs) --
+# Streamlit's cache hasher already proves reliable on the plain DataFrames
+# this app passes around elsewhere (_cached_pca(history) above); refitting
+# PCA a second time inside this function keeps that same simple cache key
+# rather than asking Streamlit to hash a custom dataclass, and the refit
+# itself is the cheap part (models/pca.py's own docstring: one small SVD,
+# well under a second) -- Section 1's own expensive step is the history
+# fetch, already cached by _cached_history above.
+@st.cache_data(show_spinner="Computing daily PC scores...")
+def _cached_pc_scores(history: pd.DataFrame):
+    return compute_pc_scores(history, compute_curve_pca(history))
 
 
 @st.cache_data(show_spinner="Bootstrapping the zero curve...")
@@ -612,6 +652,67 @@ st.caption(
     f"cash lands 20+ years out, but once discounted back to today's money that share drops to "
     f"{ladder_result.ultra_long_pv_share:.0%} -- a distant payment is worth much less today than its face "
     "amount."
+)
+
+# --- 7. PC scores and factor P&L attribution --------------------------
+# Cached on `history` alone (score_result is expensive -- a fetch plus an
+# SVD over the whole historical series); the attribution below it is NOT
+# cached, since it depends on the sidebar's current portfolio weights and
+# must reflect an edit immediately (same caching split principle as every
+# other portfolio-dependent call in this file -- see the module docstring
+# and docs/phase_4_7_documentation.md's "caching strategy").
+st.header("7. Daily factor scores and P&L attribution")
+score_result = _cached_pc_scores(history)
+
+fig_scores = go.Figure()
+for component in range(1, pca_result.n_components + 1):
+    fig_scores.add_trace(
+        go.Scatter(
+            x=score_result.scores.index,
+            y=score_result.scores[f"PC{component}"] * 10000,
+            mode="lines",
+            name=PC_LABELS.get(component, f"PC{component}"),
+        )
+    )
+fig_scores.update_layout(
+    xaxis_title="Date", yaxis_title="Daily score (basis points)",
+    legend=dict(orientation="h", yanchor="bottom", y=1.02), margin=dict(t=10),
+)
+st.plotly_chart(_style_fig(fig_scores), width="stretch")
+st.caption(
+    "Each line shows how far that single day's curve move lined up with one recurring pattern, in basis "
+    "points -- NOT a standard-deviation count. A tall spike on the level line means that day's move looked "
+    "a lot like 'the whole curve shifted together'; a tall spike on the slope line means it looked more "
+    "like 'short and long rates moved apart'."
+)
+
+st.subheader("Most recent factor P&L attribution")
+attribution = compute_factor_pnl_attribution(portfolio, history, pca_result, score_result, score_result.scores.index[-1])
+st.caption(
+    f"Change from **{attribution.previous_date}** to **{attribution.as_of_date}** -- the most recent "
+    "day-over-day move available in the loaded curve history, not necessarily today."
+)
+
+attrib_cols = st.columns(pca_result.n_components + 1)
+for col, component in zip(attrib_cols, range(1, pca_result.n_components + 1)):
+    col.metric(
+        PC_LABELS.get(component, f"PC{component}"),
+        f"{attribution.attributed_dollar[component]:+.4f} /100 face",
+        delta=f"{attribution.attributed_pct[component]:+.3%}",
+        help="This factor's share of the day's P&L, given how much it actually moved that day.",
+    )
+attrib_cols[-1].metric(
+    "Unexplained (residual)",
+    f"{attribution.residual_dollar:+.4f} /100 face",
+    delta=f"{attribution.residual_pct:+.3%}",
+    help="Actual P&L minus what the three factors above explain -- never hidden, even when it's the "
+    "largest number on the row.",
+)
+st.caption(
+    f"Actual portfolio P&L that day, from a full reprice: **{attribution.actual_dollar_pnl:+.4f}** per 100 "
+    f"face (**{attribution.actual_pct_pnl:+.3%}**). Level, slope, and curvature are a simplified, three-"
+    "pattern description of a real curve move that has many more moving parts -- the residual is whatever "
+    "those three patterns alone don't explain, not a mistake."
 )
 
 # ---------------------------------------------------------------------------
