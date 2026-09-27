@@ -359,7 +359,7 @@ def implied_ytm(
 
     def _price_at_flat_yield(y: float) -> float:
         flat_curve = pd.DataFrame({"maturity_years": [0.25, maturity_years + 1.0], "yield": [y, y]})
-        return price_bond(face_value, coupon_rate, maturity_years, flat_curve, freq=freq)
+        return price_bond(face_value, coupon_rate, maturity_years, flat_curve, freq=freq, basis="par")
 
     lo, hi = -0.02, 0.30  # wide enough for any plausible JGB yield, including negative-rate years
     f_lo, f_hi = _price_at_flat_yield(lo) - target_price, _price_at_flat_yield(hi) - target_price

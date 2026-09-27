@@ -112,6 +112,7 @@ def compute_ultra_long_profile(
     threshold_years: float = DEFAULT_ULTRA_LONG_THRESHOLD_YEARS,
     freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> UltraLongProfile:
     """Build the ultra-long profile for one portfolio against one curve.
 
@@ -126,8 +127,8 @@ def compute_ultra_long_profile(
     models.bond_pricing.price_portfolio's own docstring for why that
     override exists).
     """
-    krd_table = key_rate_duration_portfolio(portfolio, curve, freq=freq, bump_size=bump_size)
-    dv01_table = dv01_by_tenor_portfolio(portfolio, curve, freq=freq, bump_size=bump_size)
+    krd_table = key_rate_duration_portfolio(portfolio, curve, freq=freq, bump_size=bump_size, basis=basis)
+    dv01_table = dv01_by_tenor_portfolio(portfolio, curve, freq=freq, bump_size=bump_size, basis=basis)
 
     krd_row = krd_table.loc["portfolio_total"]
     dv01_row = dv01_table.loc["portfolio_total"]

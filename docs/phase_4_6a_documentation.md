@@ -1,5 +1,10 @@
 # Phase 4.6A Documentation — settlement, day count, clean/dirty price (`models/day_count.py`, `models/bond_pricing.py` extended)
 
+> **Special Phase A (2026-09-27):** figures in this doc were computed on
+> the par discounting basis in force when this phase was built. The
+> project now discounts on the bootstrapped zero curve by default; current
+> values are in [`special_phase_a_documentation.md`](special_phase_a_documentation.md) §6.
+
 ## In plain English
 
 Every price this project has computed so far has been a "clean" price —

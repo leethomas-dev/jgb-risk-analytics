@@ -128,6 +128,7 @@ def compute_factor_pnl_attribution(
     as_of_date,
     freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> FactorPnLAttribution:
     """Attribute the portfolio's P&L for the change ending on `as_of_date`
     to `pca_result`'s components, using `score_result`'s own scores.
@@ -176,7 +177,7 @@ def compute_factor_pnl_attribution(
     # greeks applied to the realized move) -- the standard convention for
     # duration-based daily P&L attribution.
     exposure = compute_portfolio_factor_exposure(
-        portfolio, curve_prev, pca_result, freq=freq, bump_size=bump_size
+        portfolio, curve_prev, pca_result, freq=freq, bump_size=bump_size, basis=basis
     )
 
     scores_today = score_result.scores.loc[as_of_ts]
@@ -190,9 +191,9 @@ def compute_factor_pnl_attribution(
         attributed_pct[e.component] = (e.pct_pnl / std) * score
         attributed_dollar[e.component] = (e.dollar_pnl / std) * score
 
-    price_table_prev = price_portfolio(portfolio, curve_prev, freq=freq)
+    price_table_prev = price_portfolio(portfolio, curve_prev, freq=freq, basis=basis)
     base_price = float((price_table_prev["weight"] * price_table_prev["price"]).sum())
-    price_table_now = price_portfolio(portfolio, curve_now, freq=freq)
+    price_table_now = price_portfolio(portfolio, curve_now, freq=freq, basis=basis)
     now_price = float((price_table_now["weight"] * price_table_now["price"]).sum())
 
     actual_dollar_pnl = now_price - base_price

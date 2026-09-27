@@ -43,6 +43,15 @@ overall duration (see effective_duration_bond and
 test_sum_of_krds_approximates_effective_duration). The rejected
 alternative wouldn't have this property.
 
+ON THE ZERO BASIS (the default since Special Phase A), the tent is in
+the PAR curve; the bootstrap then turns it into a zero-rate change that
+is NOT a tent -- raising one par yield lifts zero rates up to it but
+slightly LOWERS them from the next quoted maturity onward. So a bond's
+risk lands on the tenor it matures at (the par bond that would hedge
+it), and earlier tenors can carry small negative KRDs. KRDs still sum to
+effective duration, for the same reason as above: shifting every par
+yield equally is one parallel par shift. docs/special_phase_a_documentation.md §5.
+
 WHY A CENTRAL (TWO-SIDED) DIFFERENCE, NOT ONE-SIDED: a one-sided version
 (bump up only, compare to the unbumped price) is simpler but carries a
 larger, avoidable numerical error for the same bump size; the two-sided
@@ -123,6 +132,7 @@ def key_rate_duration_bond(
     curve: pd.DataFrame,
     freq: int = 2,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> pd.Series:
     """Per-tenor Key Rate Duration for one bond.
 
@@ -143,14 +153,14 @@ def key_rate_duration_bond(
         raise ValueError(f"bump_size must be positive, got {bump_size}")
 
     tenors, curve_sorted = _sorted_tenors_and_curve(curve)
-    base_price = price_bond(face_value, coupon_rate, maturity_years, curve_sorted, freq=freq)
+    base_price = price_bond(face_value, coupon_rate, maturity_years, curve_sorted, freq=freq, basis=basis)
 
     krds = np.empty(len(tenors))
     for k in range(len(tenors)):
         up_curve = _bump_curve_at(curve_sorted, k, bump_size)
         down_curve = _bump_curve_at(curve_sorted, k, -bump_size)
-        up_price = price_bond(face_value, coupon_rate, maturity_years, up_curve, freq=freq)
-        down_price = price_bond(face_value, coupon_rate, maturity_years, down_curve, freq=freq)
+        up_price = price_bond(face_value, coupon_rate, maturity_years, up_curve, freq=freq, basis=basis)
+        down_price = price_bond(face_value, coupon_rate, maturity_years, down_curve, freq=freq, basis=basis)
         krds[k] = -(up_price - down_price) / (2.0 * base_price * bump_size)
 
     return pd.Series(krds, index=pd.Index(tenors, name="maturity_years"), name="krd")
@@ -163,6 +173,7 @@ def effective_duration_bond(
     curve: pd.DataFrame,
     freq: int = 2,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> float:
     """One bond's whole-curve (parallel-shift) duration, using the same
     central-difference method as key_rate_duration_bond -- but shifting
@@ -180,15 +191,15 @@ def effective_duration_bond(
 
     _, curve_sorted = _sorted_tenors_and_curve(curve)
     rate_col = _rate_column(curve_sorted)
-    base_price = price_bond(face_value, coupon_rate, maturity_years, curve_sorted, freq=freq)
+    base_price = price_bond(face_value, coupon_rate, maturity_years, curve_sorted, freq=freq, basis=basis)
 
     shifted_up = curve_sorted.copy()
     shifted_up[rate_col] = shifted_up[rate_col] + bump_size
-    shifted_up_price = price_bond(face_value, coupon_rate, maturity_years, shifted_up, freq=freq)
+    shifted_up_price = price_bond(face_value, coupon_rate, maturity_years, shifted_up, freq=freq, basis=basis)
 
     shifted_down = curve_sorted.copy()
     shifted_down[rate_col] = shifted_down[rate_col] - bump_size
-    shifted_down_price = price_bond(face_value, coupon_rate, maturity_years, shifted_down, freq=freq)
+    shifted_down_price = price_bond(face_value, coupon_rate, maturity_years, shifted_down, freq=freq, basis=basis)
 
     return -(shifted_up_price - shifted_down_price) / (2.0 * base_price * bump_size)
 
@@ -198,6 +209,7 @@ def key_rate_duration_portfolio(
     curve: pd.DataFrame,
     freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> pd.DataFrame:
     """Per-bond and portfolio-level Key Rate Duration.
 
@@ -211,6 +223,10 @@ def key_rate_duration_portfolio(
     override exists -- e.g. required when curve is a zero curve, which
     must be priced against at the freq it was bootstrapped with).
 
+    basis : forwarded to price_bond -- "zero" (default) bumps the par
+    curve, re-bootstraps and reprices; "par" discounts straight off the
+    bumped par yields (models.bond_pricing, Special Phase A).
+
     Returns a DataFrame: one row per bond (by name, portfolio order) plus
     a final "portfolio_total" row, one column per curve tenor. The total
     row is each bond's weight times its own KRD, summed -- the same
@@ -221,7 +237,7 @@ def key_rate_duration_portfolio(
     per_bond = {
         bond.name: key_rate_duration_bond(
             bond.face_value, bond.coupon_rate, bond.maturity_years, curve_sorted,
-            freq=freq if freq is not None else bond.freq, bump_size=bump_size,
+            freq=freq if freq is not None else bond.freq, bump_size=bump_size, basis=basis,
         ).to_numpy()
         for bond in portfolio
     }

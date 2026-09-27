@@ -61,7 +61,7 @@ def test_krds_are_positive_like_ordinary_duration():
     # positive at every tenor with any cash-flow exposure near it.
     curve = _flat_curve(0.02)
     krd = key_rate_duration_bond(100.0, 0.02, 10.0, curve)
-    assert (krd >= 0).all()
+    assert (krd >= -1e-10).all()  # float dust at tenors with no exposure
     assert krd.sum() > 0
 
 
@@ -86,8 +86,10 @@ def test_zero_coupon_bonds_single_cash_flow_krd_concentrates_at_neighbors():
     # maturity sits exactly on a grid tenor, only that tenor's tent (weight
     # 1 there) touches it -- every other tenor's tent is 0 at that exact
     # point -- so the entire KRD should concentrate on that one tenor.
+    # Par-basis tent mechanics; the zero basis spreads this differently
+    # (test_zero_basis_zero_coupon_krd_is_negative_at_earlier_tenors).
     curve = _flat_curve(0.02, tenors=(1, 2, 5, 10, 20, 30, 40))
-    krd = key_rate_duration_bond(100.0, 0.0, 10.0, curve)
+    krd = key_rate_duration_bond(100.0, 0.0, 10.0, curve, basis="par")
     assert krd.loc[10.0] == pytest.approx(krd.sum(), rel=1e-6)
     other_tenors = [t for t in krd.index if t != 10.0]
     assert krd.loc[other_tenors].abs().max() == pytest.approx(0.0, abs=1e-8)
@@ -102,7 +104,7 @@ def test_endpoint_tenor_bump_affects_maturities_beyond_the_grid_end():
     curve = _flat_curve(0.02, tenors=(1, 2, 5, 10, 20, 30, 40))
     # A 45Y zero-coupon "bond" (synthetic, to isolate one cash flow beyond
     # the grid) should have all of its KRD at the 40Y tenor.
-    krd = key_rate_duration_bond(100.0, 0.0, 45.0, curve)
+    krd = key_rate_duration_bond(100.0, 0.0, 45.0, curve, basis="par")
     assert krd.loc[40.0] == pytest.approx(krd.sum(), rel=1e-6)
 
 
@@ -260,3 +262,52 @@ def test_non_positive_bump_size_rejected_on_effective_duration():
 
 def test_default_bump_size_is_one_basis_point():
     assert DEFAULT_BUMP_SIZE == pytest.approx(0.0001)
+
+
+# --------------------------------------------------------------------------
+# Zero basis (Special Phase A): bump par, re-bootstrap, reprice
+# --------------------------------------------------------------------------
+
+
+def test_zero_basis_krd_matches_a_hand_built_bump_rebootstrap_reprice():
+    from models.bootstrap import bootstrap_zero_curve, price_via_zero_curve
+
+    curve = load_jgb_curve(prefer_live=False)
+    face, coupon, maturity, bump = 100.0, 0.03, 20.0, 1e-4
+    krd = key_rate_duration_bond(face, coupon, maturity, curve)
+
+    base = price_via_zero_curve(face, coupon, maturity, bootstrap_zero_curve(curve))
+    for i, tenor in enumerate(curve["maturity_years"]):
+        up, down = curve.copy(), curve.copy()
+        up.loc[i, "yield"] += bump
+        down.loc[i, "yield"] -= bump
+        p_up = price_via_zero_curve(face, coupon, maturity, bootstrap_zero_curve(up))
+        p_down = price_via_zero_curve(face, coupon, maturity, bootstrap_zero_curve(down))
+        assert krd.loc[tenor] == pytest.approx(-(p_up - p_down) / (2 * base * bump), abs=1e-9)
+
+
+def test_zero_basis_par_bond_krd_sits_entirely_at_its_own_tenor():
+    # A bond whose coupon equals the flat par yield is a par bond: on the
+    # zero basis its only par-rate sensitivity is its own maturity.
+    krd = key_rate_duration_bond(100.0, 0.02, 10.0, _flat_curve(0.02))
+    assert krd.loc[10.0] == pytest.approx(krd.sum(), rel=1e-9)
+
+
+def test_zero_basis_zero_coupon_krd_is_negative_at_earlier_tenors():
+    # Raising an earlier par yield (holding later ones) LOWERS the
+    # bootstrapped zero rate at maturity, so a zero-coupon bond gains:
+    # negative par KRD before maturity. The total still equals effective
+    # duration.
+    curve = _flat_curve(0.02, tenors=(1, 2, 5, 10, 20, 30, 40))
+    krd = key_rate_duration_bond(100.0, 0.0, 10.0, curve)
+    assert (krd.loc[[1.0, 2.0, 5.0]] < 0).all()
+    assert krd.loc[10.0] > krd.sum()
+    assert krd.sum() == pytest.approx(effective_duration_bond(100.0, 0.0, 10.0, curve), rel=1e-6)
+
+
+def test_bases_agree_exactly_on_a_flat_curve_price():
+    # A flat par curve bootstraps to an identical flat zero curve.
+    curve = _flat_curve(0.025)
+    par = price_bond(100.0, 0.03, 30.0, curve, basis="par")
+    zero = price_bond(100.0, 0.03, 30.0, curve, basis="zero")
+    assert zero == pytest.approx(par, rel=1e-12)

@@ -89,7 +89,9 @@ def _resolve_date(value: str | date | None) -> date:
     return date.fromisoformat(str(value))
 
 
-def _bond_cash_flows(bond: Bond, valuation_date: date, curve: pd.DataFrame, freq: int) -> pd.DataFrame:
+def _bond_cash_flows(
+    bond: Bond, valuation_date: date, curve: pd.DataFrame, freq: int, basis: str | None = None
+) -> pd.DataFrame:
     """One bond's own cash flows -- real calendar dates, coupon and
     principal kept SEPARATE (never pre-summed), nominal and PV, already
     scaled by this bond's own portfolio weight (module docstring
@@ -101,7 +103,7 @@ def _bond_cash_flows(bond: Bond, valuation_date: date, curve: pd.DataFrame, freq
     principal = np.zeros(n_periods)
     principal[-1] = bond.face_value * bond.weight  # only the final period redeems face value
 
-    discount_factors = discount_factors_at(curve, cash_flow_times, freq=freq)
+    discount_factors = discount_factors_at(curve, cash_flow_times, freq=freq, basis=basis)
 
     return pd.DataFrame(
         {
@@ -168,6 +170,7 @@ def compute_cash_flow_ladder(
     freq: int | None = None,
     valuation_date: str | date | None = None,
     threshold_years: float = DEFAULT_ULTRA_LONG_THRESHOLD_YEARS,
+    basis: str | None = None,
 ) -> CashFlowLadderResult:
     """Aggregate every bond's cash flows, across the whole portfolio, by
     calendar date -- coupon and principal kept separate throughout, in
@@ -186,7 +189,7 @@ def compute_cash_flow_ladder(
     """
     valuation = _resolve_date(valuation_date)
     per_bond_frames = [
-        _bond_cash_flows(bond, valuation, curve, freq if freq is not None else bond.freq)
+        _bond_cash_flows(bond, valuation, curve, freq if freq is not None else bond.freq, basis=basis)
         for bond in portfolio
     ]
 

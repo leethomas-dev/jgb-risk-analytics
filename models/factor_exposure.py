@@ -86,7 +86,7 @@ import pandas as pd
 from config.portfolio_loader import Bond, load_portfolio
 from data.jgb_curve_loader import load_jgb_curve
 from data.jgb_curve_history_loader import load_jgb_curve_history
-from models.bond_pricing import curve_yield_at, price_portfolio
+from models.bond_pricing import PAR_BASIS, ZERO_BASIS, curve_yield_at, price_portfolio
 from models.dv01 import dv01_by_tenor_portfolio
 from models.key_rate_duration import DEFAULT_BUMP_SIZE, key_rate_duration_portfolio
 from models.pca import DEFAULT_PCA_LOOKBACK_YEARS, CurvePCAResult, compute_curve_pca
@@ -204,6 +204,7 @@ def compute_portfolio_factor_exposure(
     pca_result: CurvePCAResult,
     freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> PortfolioFactorExposureResult:
     """Project `portfolio`'s KRD/DV01 profile onto `pca_result`'s
     components.
@@ -243,15 +244,15 @@ def compute_portfolio_factor_exposure(
     pca_tenors = pca_result.tenors
     aligned_curve, extrapolated_tenors = _curve_aligned_to_pca_grid(curve, pca_tenors)
 
-    krd_row = key_rate_duration_portfolio(portfolio, aligned_curve, freq=freq, bump_size=bump_size).loc[
+    krd_row = key_rate_duration_portfolio(portfolio, aligned_curve, freq=freq, bump_size=bump_size, basis=basis).loc[
         "portfolio_total"
     ]
-    dv01_row = dv01_by_tenor_portfolio(portfolio, aligned_curve, freq=freq, bump_size=bump_size).loc[
+    dv01_row = dv01_by_tenor_portfolio(portfolio, aligned_curve, freq=freq, bump_size=bump_size, basis=basis).loc[
         "portfolio_total"
     ]
     base_price = float(
         (
-            price_portfolio(portfolio, aligned_curve, freq=freq)
+            price_portfolio(portfolio, aligned_curve, freq=freq, basis=basis)
             .assign(weighted=lambda df: df["weight"] * df["price"])["weighted"]
         ).sum()
     )
@@ -281,6 +282,55 @@ def compute_portfolio_factor_exposure(
         dv01_by_tenor=dv01_row,
         base_price=base_price,
         exposures=exposures,
+    )
+
+
+def compare_factor_exposure_bases(
+    portfolio: list[Bond],
+    curve: pd.DataFrame,
+    pca_result: CurvePCAResult,
+    freq: int | None = None,
+    bump_size: float = DEFAULT_BUMP_SIZE,
+) -> pd.DataFrame:
+    """Each factor's +1 std exposure priced on BOTH bases -- the monitor
+    Special Phase A introduced (docs/special_phase_a_documentation.md §7).
+
+    Why factor exposures and not a parallel DV01 gap: par steepening
+    becomes larger zero-rate steepening, so the par basis mis-sizes the
+    SHAPE factors (PC2, PC3) far more than a parallel move. On the
+    committed data a parallel DV01 gap reads ~1.3% while PC2 is off by
+    ~45% -- a parallel check would stay quiet exactly when it matters.
+
+    Returns one row per component, index `component`:
+      par_dollar / zero_dollar : +1 std P&L per 100 face on each basis.
+      dollar_gap : zero_dollar - par_dollar.
+      gap_vs_total : dollar_gap as a fraction of the portfolio's combined
+          1 std factor risk on the zero basis (sqrt of summed squared
+          zero_dollar -- PCA components are uncorrelated over their fitting
+          window). The alerting measure: comparable across factors, and
+          stable when a factor's own exposure is near zero.
+      relative_gap : dollar_gap / |zero_dollar| -- informative, but blows
+          up for small exposures (PC3), so not used for alerting.
+    """
+    par = compute_portfolio_factor_exposure(
+        portfolio, curve, pca_result, freq=freq, bump_size=bump_size, basis=PAR_BASIS
+    )
+    zero = compute_portfolio_factor_exposure(
+        portfolio, curve, pca_result, freq=freq, bump_size=bump_size, basis=ZERO_BASIS
+    )
+    zero_dollar = np.array([e.dollar_pnl for e in zero.exposures])
+    par_dollar = np.array([e.dollar_pnl for e in par.exposures])
+    combined_zero_risk = float(np.sqrt(np.sum(zero_dollar**2)))
+    gap = zero_dollar - par_dollar
+    return pd.DataFrame(
+        {
+            "par_dollar": par_dollar,
+            "zero_dollar": zero_dollar,
+            "dollar_gap": gap,
+            "gap_vs_total": gap / combined_zero_risk,
+            "relative_gap": gap / np.abs(zero_dollar),
+        },
+        index=pd.Index([e.component for e in zero.exposures], name="component"),
     )
 
 

@@ -59,7 +59,7 @@ import pandas as pd
 
 from config.portfolio_loader import Bond, load_portfolio
 from data.jgb_curve_loader import load_jgb_curve
-from models.bond_pricing import cash_flow_schedule, price_bond, price_portfolio
+from models.bond_pricing import PAR_BASIS, cash_flow_schedule, price_bond, price_portfolio
 from models.bootstrap import implied_ytm
 from models.key_rate_duration import DEFAULT_BUMP_SIZE, effective_duration_bond
 
@@ -115,7 +115,9 @@ def yield_to_maturity(
     """
     ytm = implied_ytm(face_value, coupon_rate, maturity_years, price, freq=freq)
 
-    reprice = price_bond(face_value, coupon_rate, maturity_years, _flat_curve(ytm, maturity_years), freq=freq)
+    reprice = price_bond(
+        face_value, coupon_rate, maturity_years, _flat_curve(ytm, maturity_years), freq=freq, basis=PAR_BASIS
+    )
     if abs(reprice - price) > YTM_VERIFY_TOLERANCE:
         raise RuntimeError(
             f"yield_to_maturity did not converge: solved ytm={ytm:.8f} reprices to "
@@ -197,9 +199,9 @@ def convexity(
     up_curve = _flat_curve(ytm + bump_size, maturity_years)
     down_curve = _flat_curve(ytm - bump_size, maturity_years)
 
-    p0 = price_bond(face_value, coupon_rate, maturity_years, base_curve, freq=freq)
-    p_up = price_bond(face_value, coupon_rate, maturity_years, up_curve, freq=freq)
-    p_down = price_bond(face_value, coupon_rate, maturity_years, down_curve, freq=freq)
+    p0 = price_bond(face_value, coupon_rate, maturity_years, base_curve, freq=freq, basis=PAR_BASIS)
+    p_up = price_bond(face_value, coupon_rate, maturity_years, up_curve, freq=freq, basis=PAR_BASIS)
+    p_down = price_bond(face_value, coupon_rate, maturity_years, down_curve, freq=freq, basis=PAR_BASIS)
 
     return (p_up + p_down - 2.0 * p0) / (p0 * bump_size**2)
 
@@ -208,6 +210,7 @@ def bond_analytics_portfolio(
     portfolio: list[Bond],
     curve: pd.DataFrame,
     freq: int | None = None,
+    basis: str | None = None,
 ) -> pd.DataFrame:
     """Yield, duration, and convexity for every bond in `portfolio`,
     against one `curve` -- plus a `portfolio_total` row, weighted the same
@@ -237,11 +240,13 @@ def bond_analytics_portfolio(
     rows = []
     for bond in portfolio:
         bond_freq = freq if freq is not None else bond.freq
-        price = price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=bond_freq)
+        price = price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=bond_freq, basis=basis)
         ytm = yield_to_maturity(bond.face_value, bond.coupon_rate, bond.maturity_years, price, freq=bond_freq)
         mac_dur = macaulay_duration(bond.face_value, bond.coupon_rate, bond.maturity_years, ytm, freq=bond_freq)
         mod_dur = mac_dur / (1.0 + ytm / bond_freq)
-        eff_dur = effective_duration_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=bond_freq)
+        eff_dur = effective_duration_bond(
+            bond.face_value, bond.coupon_rate, bond.maturity_years, curve, freq=bond_freq, basis=basis
+        )
         conv = convexity(bond.face_value, bond.coupon_rate, bond.maturity_years, ytm, freq=bond_freq)
         rows.append(
             {
@@ -318,7 +323,7 @@ if __name__ == "__main__":
     conv = convexity(longest.face_value, longest.coupon_rate, longest.maturity_years, ytm)
     print(f"  {longest.name}: ytm={ytm:.4%}  modified_duration={mod_dur:.4f}  convexity={conv:.2f}")
     for dy in (0.001, 0.01, 0.02, -0.02):
-        actual = price_bond(longest.face_value, longest.coupon_rate, longest.maturity_years, _flat_curve(ytm + dy, longest.maturity_years))
+        actual = price_bond(longest.face_value, longest.coupon_rate, longest.maturity_years, _flat_curve(ytm + dy, longest.maturity_years), basis=PAR_BASIS)
         actual_pct = (actual - base_price) / base_price
         dur_only = -mod_dur * dy
         dur_conv = -mod_dur * dy + 0.5 * conv * dy**2

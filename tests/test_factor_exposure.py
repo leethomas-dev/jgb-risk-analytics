@@ -78,16 +78,26 @@ def test_curve_and_pca_grids_genuinely_differ_on_a_longer_window():
     assert pca_tenors < curve_tenors
 
 
-def test_risk_beyond_the_pca_grid_moves_to_its_last_tenor_rather_than_vanishing():
-    # With no 40Y point, the 40Y bond's cash flows take the 30Y yield (flat
-    # extrapolation), so recomputing KRD on the PCA grid folds 40Y risk
-    # into 30Y. Merely dropping the 40Y column would lose it.
+def test_risk_beyond_the_pca_grid_is_kept_rather_than_vanishing():
+    # With no 40Y point, recomputing KRD on the PCA grid keeps the 40Y
+    # bond's risk (total unchanged) instead of losing it the way dropping
+    # the 40Y column would.
     curve = _curve()
     portfolio = _portfolio()
     native_krd = key_rate_duration_portfolio(portfolio, curve).loc["portfolio_total"]
     result = compute_portfolio_factor_exposure(portfolio, curve, _long_window_pca_result())
-
     assert result.krd_by_tenor.sum() == pytest.approx(native_krd.sum(), rel=1e-3)
+
+
+def test_on_the_par_basis_40y_risk_folds_exactly_into_30y():
+    # Par basis: cash flows beyond 30Y take the 30Y par yield, so the 40Y
+    # KRD lands exactly in the 30Y KRD. On the zero basis, dropping the 40Y
+    # par point also reshapes the bootstrapped curve beyond 30Y, so the
+    # risk spreads over the long end instead (total still kept, above).
+    curve = _curve()
+    portfolio = _portfolio()
+    native_krd = key_rate_duration_portfolio(portfolio, curve, basis="par").loc["portfolio_total"]
+    result = compute_portfolio_factor_exposure(portfolio, curve, _long_window_pca_result(), basis="par")
     assert result.krd_by_tenor[30.0] == pytest.approx(native_krd[30.0] + native_krd[40.0], rel=1e-3)
 
 
@@ -267,3 +277,35 @@ def test_plot_pct_metric_also_saves(tmp_path):
     output_path = tmp_path / "pct_chart.png"
     plot_factor_exposure(result, output_path=output_path, metric="pct")
     assert output_path.exists()
+
+
+# --------------------------------------------------------------------------
+# Par-vs-zero factor monitor (Special Phase A)
+# --------------------------------------------------------------------------
+
+
+def test_basis_monitor_columns_match_each_basis_computed_directly():
+    from models.factor_exposure import compare_factor_exposure_bases
+
+    pca_result, curve, portfolio = _pca_result(), _curve(), _portfolio()
+    table = compare_factor_exposure_bases(portfolio, curve, pca_result)
+    par = compute_portfolio_factor_exposure(portfolio, curve, pca_result, basis="par")
+    zero = compute_portfolio_factor_exposure(portfolio, curve, pca_result)
+    for e_par, e_zero in zip(par.exposures, zero.exposures):
+        assert table.loc[e_par.component, "par_dollar"] == pytest.approx(e_par.dollar_pnl)
+        assert table.loc[e_zero.component, "zero_dollar"] == pytest.approx(e_zero.dollar_pnl)
+
+    combined = np.sqrt((table["zero_dollar"] ** 2).sum())
+    np.testing.assert_allclose(table["gap_vs_total"], table["dollar_gap"] / combined)
+
+
+def test_basis_monitor_shows_the_par_basis_understating_slope_risk():
+    # The Special Phase A finding, pinned: level barely moves, slope
+    # (PC2) is materially larger on the zero basis, and curvature (PC3)
+    # changes sign.
+    from models.factor_exposure import compare_factor_exposure_bases
+
+    table = compare_factor_exposure_bases(_portfolio(), _curve(), _pca_result())
+    assert abs(table.loc[1, "relative_gap"]) < 0.05
+    assert table.loc[2, "zero_dollar"] < 1.5 * table.loc[2, "par_dollar"] < 0  # both losses; zero >=1.5x
+    assert np.sign(table.loc[3, "zero_dollar"]) != np.sign(table.loc[3, "par_dollar"])

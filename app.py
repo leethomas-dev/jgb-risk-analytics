@@ -26,6 +26,11 @@ The rest -- portfolio weight editing, table joins, chart data shaping -- is
 presentation logic only: reading already-computed results and laying them
 out. See docs/phase_4_7_documentation.md for the full account, including
 the caching strategy and what's deliberately out of scope.
+
+Every price and risk figure here is on the zero-curve basis (Special
+Phase A): the par curve is bootstrapped before discounting, and each
+sensitivity bumps a par yield, re-bootstraps and reprices. No change was
+needed in this file beyond captions -- the models default to it.
 """
 
 from __future__ import annotations
@@ -604,7 +609,8 @@ st.caption(
     "Three views of the same market: the rates the government actually publishes (par curve), a more "
     "theoretically precise version stripped of a coupon-timing distortion (bootstrapped zero curve), and "
     "a smooth mathematical description of that zero curve's shape, picked between two candidate models by "
-    "whichever actually fits this curve better."
+    "whichever actually fits this curve better. Every price and risk figure on this page discounts on the "
+    "zero curve."
 )
 
 # --- 3. Portfolio table ----------------------------------------------------
@@ -636,8 +642,8 @@ st.caption(
     "Clean price is the quoted price; dirty price is what a buyer actually pays, including interest "
     "accrued since the last coupon. Accrued interest is shown as of today (no separate settlement date is "
     "set here), so it is zero and dirty price equals clean price. Modified duration shown here is the "
-    "curve-based sensitivity DV01 is itself built from; a second, yield-based duration measure exists in "
-    "this project and differs slightly at the long end (see the docs for why)."
+    "curve-based sensitivity DV01 is itself built from (every quoted rate moved together); the headline "
+    "figure above is a second, yield-based measure, which differs at the long end (see the docs for why)."
 )
 
 # --- 4. Key rate duration ---------------------------------------------------
@@ -649,9 +655,11 @@ fig_krd = go.Figure(go.Bar(x=[f"{t:g}Y" for t in krd_tenors], y=krd_values, mark
 fig_krd.update_layout(xaxis_title="Tenor", yaxis_title="Portfolio KRD (years)", margin=dict(t=10))
 st.plotly_chart(_style_fig(fig_krd), width="stretch")
 st.caption(
-    f"Each bar shows how much the portfolio's value would move if only that one interest rate point moved "
-    f"by 1%, holding every other rate fixed. Red bars ({ultra_long.threshold_years:.0f}Y and beyond) are "
-    "the 'ultra-long' segment."
+    f"Each bar shows how much the portfolio's value would move if only that one quoted rate moved by 1%, "
+    f"holding every other quoted rate fixed. Risk lands on the tenors where the bonds actually mature; the "
+    f"small negative bars in between are real, not errors -- raising one quoted rate while its neighbours "
+    f"stay put slightly lowers the discount rates from the next quoted maturity onward. Red bars "
+    f"({ultra_long.threshold_years:.0f}Y and beyond) are the 'ultra-long' segment."
 )
 
 # --- 5. PCA factors ----------------------------------------------------

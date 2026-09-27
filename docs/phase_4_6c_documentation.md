@@ -1,5 +1,10 @@
 # Phase 4.6C Documentation — cash flow ladder (`models/cash_flow_ladder.py`)
 
+> **Special Phase A (2026-09-27):** figures in this doc were computed on
+> the par discounting basis in force when this phase was built. The
+> project now discounts on the bootstrapped zero curve by default; current
+> values are in [`special_phase_a_documentation.md`](special_phase_a_documentation.md) §6.
+
 ## In plain English
 
 Every other part of this project asks "how much is this portfolio worth,

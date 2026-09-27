@@ -27,6 +27,11 @@ model validator can review a decision without re-deriving it from the diff.
 | 4.7   | [`phase_4_7_documentation.md`](phase_4_7_documentation.md) | `app.py` — a Streamlit dashboard over the existing analytics modules, plus deployment readiness for Streamlit Community Cloud | Done   |
 | 4D    | [`phase_4d_documentation.md`](phase_4d_documentation.md) | `models/pc_scores.py` — `compute_pc_scores()`, daily PCA factor scores; `models/factor_pnl_attribution.py` — `compute_factor_pnl_attribution()`, daily factor P&L attribution with a reported residual | Done   |
 | 4E    | [`phase_4e_documentation.md`](phase_4e_documentation.md) | `data/jgb_curve_history_loader.py` (extended) — `_extend_with_recent_rows()`, tops up the curve history with MOF's current-month file, cached locally across month rollovers; `app.py` (extended) — a Refresh market data button | Done   |
+| Special A | [`special_phase_a_documentation.md`](special_phase_a_documentation.md) | `models/bond_pricing.py` (`basis`, default `"zero"`) + `models/factor_exposure.py` (`compare_factor_exposure_bases()`) — every price and risk figure discounts on the bootstrapped zero curve (bump par, re-bootstrap, reprice), after the par basis was found to understate slope risk ~45%; par-vs-zero factor monitor | Done   |
+
+Special phases are cross-cutting changes made between numbered phases.
+Earlier docs keep the figures that were true when they were written and
+point to the special phase that changed them.
 
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded

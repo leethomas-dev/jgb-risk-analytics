@@ -194,14 +194,16 @@ def test_modified_vs_effective_duration_gap_on_the_real_curve_is_bounded_and_gro
     # flat-curve control above). Bounded here at a level well above the
     # measured real gap, so a genuine regression (e.g. a formula error
     # inflating the gap several-fold) would still be caught.
+    # Phase 4.6B's finding, on the par basis it was made on. The zero
+    # basis has its own pattern (next test).
     curve = load_jgb_curve(prefer_live=False)
     portfolio = load_portfolio()
     gaps = {}
     for bond in portfolio:
-        price = price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve)
+        price = price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, basis="par")
         ytm = yield_to_maturity(bond.face_value, bond.coupon_rate, bond.maturity_years, price)
         mod_dur = modified_duration(bond.face_value, bond.coupon_rate, bond.maturity_years, ytm)
-        eff_dur = effective_duration_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve)
+        eff_dur = effective_duration_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve, basis="par")
         gaps[bond.maturity_years] = abs(mod_dur - eff_dur) / eff_dur
 
     assert gaps[2.0] < 0.01  # short end: curve is nearly flat across a 2Y bond's own cash flows
@@ -212,6 +214,25 @@ def test_modified_vs_effective_duration_gap_on_the_real_curve_is_bounded_and_gro
     ordered_maturities = sorted(gaps)
     ordered_gaps = [gaps[m] for m in ordered_maturities]
     assert ordered_gaps == sorted(ordered_gaps)
+
+
+def test_modified_vs_effective_duration_gap_on_the_zero_basis_is_bounded():
+    # On the zero basis, effective duration is the sensitivity to a
+    # parallel PAR shift after re-bootstrapping, which amplifies where the
+    # curve is steep (10Y-25Y) -- so the gap peaks mid-long end (20Y)
+    # rather than growing all the way to 40Y. Special Phase A doc.
+    curve = load_jgb_curve(prefer_live=False)
+    gaps = {}
+    for bond in load_portfolio():
+        price = price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve)
+        ytm = yield_to_maturity(bond.face_value, bond.coupon_rate, bond.maturity_years, price)
+        mod_dur = modified_duration(bond.face_value, bond.coupon_rate, bond.maturity_years, ytm)
+        eff_dur = effective_duration_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve)
+        gaps[bond.maturity_years] = abs(mod_dur - eff_dur) / eff_dur
+
+    assert gaps[2.0] < 0.01
+    assert max(gaps.values()) < 0.15
+    assert max(gaps, key=gaps.get) == 20.0
 
 
 # --------------------------------------------------------------------------

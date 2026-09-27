@@ -1,5 +1,10 @@
 # Phase 4.5C Documentation — pricing integration + PCA comparison
 
+> **Special Phase A (2026-09-27):** the zero curve wired in here as an
+> option is now the project-wide default, and §2's −4.72% DV01 gap turned
+> out to answer a narrower question than the one that mattered (§2.1).
+> See [`special_phase_a_documentation.md`](special_phase_a_documentation.md).
+
 ## In plain English
 
 Parts A and B built a more theoretically correct set of interest rates
@@ -206,6 +211,35 @@ tenors):**
 The largest absolute per-tenor KRD swings sit at 30Y and 40Y, consistent
 with the per-bond finding above.
 
+### 2.1 Correction (2026-09-27): which question the DV01 gap answers
+
+The −4.72% DV01 gap above is real, but it answers a narrower question
+than this section originally implied. It compares par-basis DV01 with
+zero-basis DV01 **for a shift in zero rates**. This project's risk
+factors (Phase 4B's PCA) are moves in **par yields**, so the benchmark
+that matters for its risk numbers is different: shift the par curve,
+re-bootstrap the zero curve, and reprice on the zero basis.
+
+| Portfolio DV01 (per 100 face) | Upward curve (snapshot) | Same curve, inverted |
+| --- | --- | --- |
+| A. Par basis, par shift (this project) | 0.09627 | 0.14290 |
+| B. Zero basis, zero-rate shift (the table above) | 0.09172 | 0.14616 |
+| C. Zero basis, par shift + re-bootstrap | 0.09749 | 0.13870 |
+| **Par basis vs. C** | **−1.3%** | **+3.0%** |
+
+Against the right benchmark (C), the par simplification's risk error is
+**smaller** than −4.72% suggested, and on today's upward-sloping curve it
+**understates** risk (per bond: 2Y −0.1%, 5Y −0.6%, 10Y −1.9%,
+20Y −2.7%, 30Y −1.1%, 40Y +0.3%). Its sign depends on curve shape: on an
+inverted curve it overstates. The price gaps above are unaffected — they
+compare valuations, not risk.
+
+The factor-level check went further: on the par basis, PC2 (slope)
+exposure is ~45% smaller than on the consistent zero basis and PC3's
+sign flips. That led to Special Phase A, which made zero-curve
+discounting (bump par, re-bootstrap, reprice) the project-wide default:
+[`special_phase_a_documentation.md`](special_phase_a_documentation.md).
+
 ---
 
 ## 3. C2: do NS's loadings resemble PCA's? A partial, honest answer
@@ -313,7 +347,7 @@ table, making the slope/curvature shape mismatch immediately legible.
 
 ## 5. Known limitations (for the SR 11-7 validation report)
 
-**5.1 The zero-curve basis is opt-in, not default.** Every existing
+**5.1 (Superseded by Special Phase A.) The zero-curve basis is opt-in, not default.** Every existing
 function's default behavior is unchanged; a caller must deliberately pass
 a `bootstrap_zero_curve()` result to get the more theoretically grounded
 pricing. Nothing in this project's `__main__` blocks or default portfolio
@@ -325,6 +359,11 @@ concrete P&L figure.** The zero curve's own limitation
 series, treated as a par curve) flows directly into every number in §2.
 The ~500bp 30Y price gap is the difference between two approximations, not
 between an approximation and ground truth.
+
+**5.5 The −4.72% DV01 gap is not the risk error that matters here (§2.1).**
+It measures sensitivity to zero-rate shifts; this project's factors are
+par-yield moves. Against the consistent benchmark the error is −1.3%
+(understating) on today's curve, and its sign flips on an inverted curve.
 
 **5.3 The C2 loading comparison is a single cross-section, at one tau.**
 §3.3's tau-dependence finding is itself evidence that this comparison

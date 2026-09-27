@@ -1,5 +1,14 @@
 # Phase 4C Documentation — `models/factor_exposure.py`
 
+> **Special Phase A (2026-09-27):** figures in this doc were computed on
+> the par discounting basis in force when this phase was built. The
+> project now discounts on the bootstrapped zero curve by default; current
+> values are in [`special_phase_a_documentation.md`](special_phase_a_documentation.md) §6.
+> Headline change: PC2 (slope) exposure nearly doubles (−0.054 → −0.099
+> per 100 face) and PC3 changes sign; the par basis understated slope
+> risk by ~45%. The alignment logic in §1.1 is unchanged; the exact
+> "40Y folds into 30Y" identity holds only on the par basis (that doc's §5).
+
 ## In plain English
 
 Phase 4B found the handful of patterns the JGB curve tends to move in —

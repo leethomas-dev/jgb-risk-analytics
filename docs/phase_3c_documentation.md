@@ -1,5 +1,13 @@
 # Phase 3C Documentation — `models/ultra_long_profile.py`
 
+> **Special Phase A (2026-09-27):** figures in this doc were computed on
+> the par discounting basis in force when this phase was built. The
+> project now discounts on the bootstrapped zero curve by default; current
+> values are in [`special_phase_a_documentation.md`](special_phase_a_documentation.md) §6.
+> Headline change: the 20Y+ bonds now carry **68%** of the portfolio's
+> rate risk, not 51% — risk is assigned to the tenor each bond matures at
+> rather than shared with interpolation neighbours (that doc's §5).
+
 ## In plain English
 
 This part answers one question, in both percentage and currency terms:

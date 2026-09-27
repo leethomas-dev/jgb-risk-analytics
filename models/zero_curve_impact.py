@@ -108,7 +108,7 @@ from config.portfolio_loader import Bond, load_portfolio
 from data.jgb_curve_history_loader import load_jgb_curve_history
 from data.jgb_curve_loader import load_jgb_curve
 from models.bootstrap import DEFAULT_BOOTSTRAP_FREQ, bootstrap_zero_curve, zero_rate_at
-from models.bond_pricing import price_bond
+from models.bond_pricing import PAR_BASIS, price_bond
 from models.curve_fitting import (
     NelsonSiegelFitResult,
     SvenssonFitResult,
@@ -242,11 +242,11 @@ def compute_par_vs_zero_impact(
     rows = []
     for bond in portfolio:
         args = (bond.face_value, bond.coupon_rate, bond.maturity_years)
-        par_price = price_bond(*args, par_curve, freq=freq)
+        par_price = price_bond(*args, par_curve, freq=freq, basis=PAR_BASIS)
         zero_price = price_bond(*args, zero_curve, freq=freq)
-        par_duration = effective_duration_bond(*args, par_curve, freq=freq, bump_size=bump_size)
+        par_duration = effective_duration_bond(*args, par_curve, freq=freq, bump_size=bump_size, basis=PAR_BASIS)
         zero_duration = effective_duration_bond(*args, zero_curve, freq=freq, bump_size=bump_size)
-        par_dv01 = dv01_bond(*args, par_curve, freq=freq, bump_size=bump_size)
+        par_dv01 = dv01_bond(*args, par_curve, freq=freq, bump_size=bump_size, basis=PAR_BASIS)
         zero_dv01 = dv01_bond(*args, zero_curve, freq=freq, bump_size=bump_size)
 
         rows.append(
@@ -268,9 +268,9 @@ def compute_par_vs_zero_impact(
         )
     per_bond = pd.DataFrame(rows)
 
-    krd_by_tenor_par = key_rate_duration_portfolio(portfolio, par_curve, freq=freq, bump_size=bump_size)
+    krd_by_tenor_par = key_rate_duration_portfolio(portfolio, par_curve, freq=freq, bump_size=bump_size, basis=PAR_BASIS)
     krd_by_tenor_zero = key_rate_duration_portfolio(portfolio, aligned_zero, freq=freq, bump_size=bump_size)
-    dv01_by_tenor_par = dv01_by_tenor_portfolio(portfolio, par_curve, freq=freq, bump_size=bump_size)
+    dv01_by_tenor_par = dv01_by_tenor_portfolio(portfolio, par_curve, freq=freq, bump_size=bump_size, basis=PAR_BASIS)
     dv01_by_tenor_zero = dv01_by_tenor_portfolio(portfolio, aligned_zero, freq=freq, bump_size=bump_size)
 
     return ParVsZeroImpactResult(

@@ -149,7 +149,7 @@ def test_price_bond_uses_flat_extrapolation_beyond_curve_range():
         y = 0.03 if t > 10.0 else np.interp(t, [1.0, 5.0, 10.0], [0.01, 0.02, 0.03])
         expected += cf / (1 + y / freq) ** (freq * t)
 
-    assert price_bond(face, coupon_rate, maturity, curve, freq=freq) == pytest.approx(expected)
+    assert price_bond(face, coupon_rate, maturity, curve, freq=freq, basis="par") == pytest.approx(expected)
 
 
 # --------------------------------------------------------------------------
@@ -245,7 +245,7 @@ def test_price_bond_correct_against_every_grid_shape(build_curve):
     # between different neighbor pairs on each grid (15/20 on the 15-point
     # grid, 10/20 on the sub-year fixture) -- exercises each grid's own points.
 
-    price = price_bond(face, coupon_rate, maturity, curve, freq=freq)
+    price = price_bond(face, coupon_rate, maturity, curve, freq=freq, basis="par")
 
     n = round(maturity * freq)
     tenors = curve.sort_values("maturity_years")["maturity_years"].to_numpy()
@@ -311,7 +311,7 @@ def test_par_and_zero_bases_generally_give_different_prices():
 
     par_curve = load_jgb_curve(prefer_live=False)
     zero_curve = bootstrap_zero_curve(par_curve)
-    par_price = price_bond(100.0, 0.038, 40.0, par_curve)
+    par_price = price_bond(100.0, 0.038, 40.0, par_curve, basis="par")
     zero_price = price_bond(100.0, 0.038, 40.0, zero_curve)
     assert par_price != pytest.approx(zero_price, rel=1e-3)
 
@@ -651,3 +651,38 @@ def test_discount_factors_at_is_strictly_decreasing_for_a_positive_rate_curve():
     times = np.array([1.0, 5.0, 10.0, 20.0, 30.0, 40.0])
     factors = discount_factors_at(curve, times)
     assert np.all(np.diff(factors) < 0)
+
+
+# --------------------------------------------------------------------------
+# Pricing basis (Special Phase A)
+# --------------------------------------------------------------------------
+
+
+def test_default_basis_is_zero():
+    from models.bond_pricing import DEFAULT_BASIS, ZERO_BASIS
+
+    assert DEFAULT_BASIS == ZERO_BASIS
+
+
+def test_unknown_basis_is_rejected():
+    with pytest.raises(ValueError, match="basis must be"):
+        price_bond(100.0, 0.02, 10.0, load_jgb_curve(prefer_live=False), basis="spot")
+
+
+def test_par_basis_on_a_zero_curve_is_rejected_not_reinterpreted():
+    from models.bootstrap import bootstrap_zero_curve
+
+    zero_curve = bootstrap_zero_curve(load_jgb_curve(prefer_live=False))
+    with pytest.raises(ValueError, match="zero curve"):
+        price_bond(100.0, 0.02, 10.0, zero_curve, basis="par")
+
+
+def test_zero_basis_matches_pricing_off_the_bootstrapped_curve_directly():
+    # The cache must not change results, and must tell curves apart.
+    from models.bootstrap import bootstrap_zero_curve
+
+    curve = load_jgb_curve(prefer_live=False)
+    bumped = curve.assign(**{"yield": curve["yield"] + 0.001})
+    for c in (curve, bumped, curve):
+        expected = price_bond(100.0, 0.03, 25.0, bootstrap_zero_curve(c))
+        assert price_bond(100.0, 0.03, 25.0, c) == pytest.approx(expected, rel=1e-12)

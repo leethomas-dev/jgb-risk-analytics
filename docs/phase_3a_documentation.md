@@ -1,5 +1,10 @@
 # Phase 3A Documentation — `models/key_rate_duration.py`
 
+> **Special Phase A (2026-09-27):** figures in this doc were computed on
+> the par discounting basis in force when this phase was built. The
+> project now discounts on the bootstrapped zero curve by default; current
+> values are in [`special_phase_a_documentation.md`](special_phase_a_documentation.md) §6.
+
 ## In plain English
 
 "How much does this bond's price move when interest rates change?" is

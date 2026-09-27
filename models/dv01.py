@@ -47,6 +47,7 @@ def dv01_bond(
     curve: pd.DataFrame,
     freq: int = 2,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> float:
     """One bond's DV01: Price * ModifiedDuration * bump_size.
 
@@ -59,9 +60,9 @@ def dv01_bond(
     Raises whatever price_bond / effective_duration_bond raise for a bad
     input.
     """
-    price = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq)
+    price = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq, basis=basis)
     modified_duration = effective_duration_bond(
-        face_value, coupon_rate, maturity_years, curve, freq=freq, bump_size=bump_size
+        face_value, coupon_rate, maturity_years, curve, freq=freq, bump_size=bump_size, basis=basis
     )
     return price * modified_duration * bump_size
 
@@ -73,6 +74,7 @@ def dv01_by_tenor_bond(
     curve: pd.DataFrame,
     freq: int = 2,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> pd.Series:
     """One bond's DV01, broken out by curve tenor: Price * KRD_k *
     bump_size, one value per tenor -- the currency analogue of
@@ -87,8 +89,10 @@ def dv01_by_tenor_bond(
     key_rate_duration_bond's own tenor sum has relative to overall
     duration -- no new error from the rescaling itself.
     """
-    price = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq)
-    krd = key_rate_duration_bond(face_value, coupon_rate, maturity_years, curve, freq=freq, bump_size=bump_size)
+    price = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq, basis=basis)
+    krd = key_rate_duration_bond(
+        face_value, coupon_rate, maturity_years, curve, freq=freq, bump_size=bump_size, basis=basis
+    )
     return (price * krd * bump_size).rename("dv01")
 
 
@@ -97,6 +101,7 @@ def dv01_portfolio(
     curve: pd.DataFrame,
     freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> pd.DataFrame:
     """Per-bond DV01 across a portfolio, mirroring price_portfolio's shape
     (one row per bond, no total row) rather than
@@ -121,15 +126,15 @@ def dv01_portfolio(
             "weight": bond.weight,
             "price": price_bond(
                 bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
-                freq=freq if freq is not None else bond.freq,
+                freq=freq if freq is not None else bond.freq, basis=basis,
             ),
             "modified_duration": effective_duration_bond(
                 bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
-                freq=freq if freq is not None else bond.freq, bump_size=bump_size,
+                freq=freq if freq is not None else bond.freq, bump_size=bump_size, basis=basis,
             ),
             "dv01": dv01_bond(
                 bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
-                freq=freq if freq is not None else bond.freq, bump_size=bump_size,
+                freq=freq if freq is not None else bond.freq, bump_size=bump_size, basis=basis,
             ),
         }
         for bond in portfolio
@@ -145,6 +150,7 @@ def dv01_by_tenor_portfolio(
     curve: pd.DataFrame,
     freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
+    basis: str | None = None,
 ) -> pd.DataFrame:
     """Per-bond and portfolio-level DV01 by tenor -- mirrors
     key_rate_duration_portfolio's shape: one row per bond plus a
@@ -159,7 +165,7 @@ def dv01_by_tenor_portfolio(
     per_bond = {
         bond.name: dv01_by_tenor_bond(
             bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
-            freq=freq if freq is not None else bond.freq, bump_size=bump_size,
+            freq=freq if freq is not None else bond.freq, bump_size=bump_size, basis=basis,
         )
         for bond in portfolio
     }

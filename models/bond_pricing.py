@@ -48,6 +48,20 @@ against it directly:
   price_bond/price_portfolio/KRD/DV01 passes UNCHANGED, because a
   'yield'-column curve takes the exact, untouched original code path.
 
+ZERO BASIS BY DEFAULT (Special Phase A). A 'yield'-column curve is now
+READ as a par curve and, by default, bootstrapped into a zero curve before
+discounting (basis="zero"). So every module that bumps the par curve and
+reprices -- KRD, DV01, the ultra-long profile, factor exposure, factor
+P&L attribution -- now measures "bump par, re-bootstrap, reprice" with no
+change of its own. Why: this project's risk factors (Phase 4B's PCA) are
+par-yield moves, and par steepening becomes LARGER zero-rate steepening;
+discounting straight off par yields missed that and understated slope
+(PC2) risk by ~45% (docs/special_phase_a_documentation.md). basis="par"
+keeps the original direct-par discounting, for comparisons and for
+single-flat-yield definitions (YTM, modified duration, convexity), where
+the two bases coincide exactly anyway. Column auto-detection still
+applies: a 'zero_rate' curve is discounted as given.
+
 Reads the portfolio and curve through their own loaders -- never hardcodes
 either. Cheap to call repeatedly against a modified curve on purpose:
 KRD, DV01, and the ultra-long profile all work by bumping one curve row
@@ -73,6 +87,7 @@ coupon, and the ex-coupon question) handled explicitly there.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -80,6 +95,16 @@ import pandas as pd
 from config.portfolio_loader import DAYS_PER_YEAR, Bond, load_portfolio
 from data.jgb_curve_loader import load_jgb_curve
 from models import day_count
+
+# Discounting bases (Special Phase A; module docstring).
+PAR_BASIS = "par"
+ZERO_BASIS = "zero"
+DEFAULT_BASIS = ZERO_BASIS
+
+# Bootstraps kept per distinct (curve, freq). A KRD run reprices every
+# bond against the same few bumped curves, so this turns ~190 bootstraps
+# into ~30. Small: entries are one curve each.
+_BOOTSTRAP_CACHE_SIZE = 256
 
 
 # PAR basis only -- the zero-basis equivalent is
@@ -128,7 +153,35 @@ def cash_flow_schedule(maturity_years: float, freq: int) -> tuple[int, np.ndarra
     return n_periods, cash_flow_times
 
 
-def discount_factors_at(curve: pd.DataFrame, times, freq: int = 2) -> np.ndarray:
+def _resolve_basis(basis: str | None) -> str:
+    """None -> DEFAULT_BASIS; otherwise must be PAR_BASIS or ZERO_BASIS."""
+    resolved = DEFAULT_BASIS if basis is None else basis
+    if resolved not in (PAR_BASIS, ZERO_BASIS):
+        raise ValueError(f"basis must be {PAR_BASIS!r} or {ZERO_BASIS!r}, got {basis!r}")
+    return resolved
+
+
+@lru_cache(maxsize=_BOOTSTRAP_CACHE_SIZE)
+def _cached_zero_curve(maturities: tuple, yields: tuple, freq: int) -> pd.DataFrame:
+    # Local import: models.bootstrap imports curve_yield_at from this module.
+    from models.bootstrap import bootstrap_zero_curve
+
+    par_curve = pd.DataFrame({"maturity_years": maturities, "yield": yields})
+    return bootstrap_zero_curve(par_curve, freq=freq)
+
+
+def zero_curve_for(par_curve: pd.DataFrame, freq: int = 2) -> pd.DataFrame:
+    """The zero curve a par curve is discounted on under the zero basis --
+    models.bootstrap.bootstrap_zero_curve(par_curve, freq), cached. Callers
+    must not modify the returned frame (it's shared)."""
+    return _cached_zero_curve(
+        tuple(par_curve["maturity_years"].astype(float)),
+        tuple(par_curve["yield"].astype(float)),
+        int(freq),
+    )
+
+
+def discount_factors_at(curve: pd.DataFrame, times, freq: int = 2, basis: str | None = None) -> np.ndarray:
     """Discount factor(s) for arbitrary time(s), auto-detected from
     `curve`'s own columns -- exactly price_bond's own "TWO DISCOUNTING
     BASES" logic (module docstring), factored out here (Phase 4.6C) so any
@@ -145,15 +198,25 @@ def discount_factors_at(curve: pd.DataFrame, times, freq: int = 2) -> np.ndarray
     always just multiply. price_bond itself was updated to call this and
     multiply -- confirmed, via the full pre-existing test suite passing
     unchanged, to produce bit-for-bit the same prices as before.
-    """
-    if "zero_rate" in curve.columns:
-        # Local import: avoids a module-level circular import, since
-        # models.bootstrap itself imports curve_yield_at from this module
-        # -- the same deferred-import pattern models.bootstrap.implied_ytm
-        # already uses for the reverse direction.
-        from models.bootstrap import discount_factor_at
 
+    basis (Special Phase A): for a 'yield'-column curve, "zero" (the
+    default) bootstraps it first (zero_curve_for) and discounts on that;
+    "par" discounts straight off the par yields. A 'zero_rate' curve is
+    already a zero curve and is discounted as given; asking for "par" on
+    one is an error rather than a silent reinterpretation.
+    """
+    resolved = _resolve_basis(basis)
+    # Local import: avoids a module-level circular import, since
+    # models.bootstrap itself imports curve_yield_at from this module.
+    from models.bootstrap import discount_factor_at
+
+    if "zero_rate" in curve.columns:
+        if basis == PAR_BASIS:
+            raise ValueError("basis='par' was requested for a zero curve ('zero_rate' column)")
         return discount_factor_at(curve, times, freq=freq)
+
+    if resolved == ZERO_BASIS:
+        return discount_factor_at(zero_curve_for(curve, freq), times, freq=freq)
 
     yields_at_times = curve_yield_at(curve, times)
     return 1.0 / (1.0 + yields_at_times / freq) ** (freq * np.asarray(times))
@@ -165,6 +228,7 @@ def price_bond(
     maturity_years: float,
     curve: pd.DataFrame,
     freq: int = 2,
+    basis: str | None = None,
 ) -> float:
     """Price a bond by discounting each cash flow at the rate the curve
     implies for that cash flow's own maturity.
@@ -191,6 +255,9 @@ def price_bond(
     freq : coupon payments per year (2 = semiannual, the JGB default).
         For the zero-curve basis, MUST match the freq the zero curve was
         itself bootstrapped with (docs/phase_4_5a_documentation.md §1.4).
+        A par curve priced on the zero basis is bootstrapped at this freq.
+    basis : "zero" (default) or "par" for a 'yield'-column curve -- see
+        discount_factors_at and the module docstring (Special Phase A).
 
     Returns
     -------
@@ -212,7 +279,7 @@ def price_bond(
     cash_flows = np.full(n_periods, coupon_payment, dtype=float)
     cash_flows[-1] += face_value  # final period also redeems face value
 
-    discount_factors = discount_factors_at(curve, cash_flow_times, freq=freq)
+    discount_factors = discount_factors_at(curve, cash_flow_times, freq=freq, basis=basis)
     return float(np.sum(cash_flows * discount_factors))
 
 
@@ -220,6 +287,7 @@ def price_portfolio(
     portfolio: list[Bond],
     curve: pd.DataFrame,
     freq: int | None = None,
+    basis: str | None = None,
 ) -> pd.DataFrame:
     """Price every bond in `portfolio` against one `curve`.
 
@@ -249,6 +317,7 @@ def price_portfolio(
             "price": price_bond(
                 bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
                 freq=freq if freq is not None else bond.freq,
+                basis=basis,
             ),
         }
         for bond in portfolio
@@ -412,12 +481,13 @@ def dirty_price(
     valuation_date: str | date | None = None,
     settlement_date: str | date | None = None,
     day_count_convention: str = day_count.ACT_365,
+    basis: str | None = None,
 ) -> float:
     """Dirty price: what settlement actually pays. = price_bond() (the
     quoted, clean price) + accrued_interest() (this module's own two new
     functions, both above) -- computed by calling each independently and
     adding the results, not by re-deriving either inside this function."""
-    clean = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq)
+    clean = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq, basis=basis)
     accrued = accrued_interest(
         face_value,
         coupon_rate,
@@ -475,6 +545,7 @@ def dirty_price_portfolio(
     valuation_date: str | date | None = None,
     settlement_date: str | date | None = None,
     day_count_convention: str = day_count.ACT_365,
+    basis: str | None = None,
 ) -> pd.DataFrame:
     """price_portfolio() and accrued_interest_portfolio() combined into one
     table: one row per bond, columns [name, maturity_years, coupon_rate,
@@ -486,7 +557,7 @@ def dirty_price_portfolio(
     freq : forwarded unchanged to both -- None (default) means each bond
     prices and accrues at its own bond.freq; an explicit int overrides
     every bond to that one shared frequency."""
-    clean = price_portfolio(portfolio, curve, freq=freq)
+    clean = price_portfolio(portfolio, curve, freq=freq, basis=basis)
     accrued = accrued_interest_portfolio(
         portfolio,
         freq=freq,
