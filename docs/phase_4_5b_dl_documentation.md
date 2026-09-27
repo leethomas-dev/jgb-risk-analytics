@@ -155,8 +155,9 @@ precisely-tuned constant rather than a reasonable point in a fairly wide,
 flat-bottomed valley.
 
 **A striking contrast worth naming explicitly:** the historically-optimal
-FIXED tau (~6.8-7.0 years) is nowhere near the ~34-year tau Phase 4.5B's
-own cross-sectional fit finds for the single most recent date
+FIXED tau (~6.8-7.0 years) is nowhere near the 50-year tau (the top of
+its search range) Phase 4.5B's own cross-sectional fit lands on for the
+single most recent date
 (`docs/phase_4_5b_documentation.md` §6). This isn't a contradiction —
 it's the exact motivation for fixing tau in the first place: a freely
 re-optimized per-date tau can land in very different places depending on

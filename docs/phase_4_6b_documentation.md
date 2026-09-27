@@ -125,8 +125,8 @@ against the bond's own single flat YTM; `effective_duration_bond` is
 curve-based, bumping the real curve's every point and repricing with each
 cash flow discounted at its own, different, curve-implied rate. They
 coincide exactly only when the curve is flat across a bond's own cash
-flows — and this project's real curve is not flat (2Y quotes ~1.4%, 40Y
-quotes ~3.9%, snapshot curve).
+flows — and this project's real curve is not flat (2Y quotes ~1.7%, 40Y
+quotes ~4.1%, snapshot curve).
 
 **Investigated, not assumed, per the phase brief's own instruction ("a
 material gap indicates an error — investigate rather than loosen
@@ -145,18 +145,18 @@ premise they're both measuring (a single flat rate) actually holds.
 
 | Bond | Modified duration | Effective duration | Gap | Gap (relative) |
 | --- | --- | --- | --- | --- |
-| JGB_2Y | 1.9713 | 1.9712 | +0.000037 | +0.0019% |
-| JGB_5Y | 4.7909 | 4.7898 | +0.001068 | +0.0223% |
-| JGB_10Y | 8.9883 | 8.9718 | +0.016445 | +0.1833% |
-| JGB_20Y | 14.8958 | 14.6498 | +0.245963 | +1.6789% |
-| JGB_30Y | 18.5863 | 17.8702 | +0.716112 | +4.0073% |
-| JGB_40Y | 21.0259 | 19.7945 | +1.231375 | +6.2208% |
+| JGB_2Y | 1.9679 | 1.9678 | +0.000025 | +0.0013% |
+| JGB_5Y | 4.7791 | 4.7778 | +0.001238 | +0.0259% |
+| JGB_10Y | 8.9379 | 8.9162 | +0.021766 | +0.2441% |
+| JGB_20Y | 14.6487 | 14.3880 | +0.260632 | +1.8114% |
+| JGB_30Y | 18.0879 | 17.4325 | +0.655481 | +3.7601% |
+| JGB_40Y | 20.3760 | 19.4411 | +0.934924 | +4.8090% |
 
 **Reading this, not hiding it.** The gap is negligible at the short end
-and grows to a genuinely material **6.2% relative gap at 40 years** — the
+and grows to a genuinely material **4.8% relative gap at 40 years** — the
 same recurring theme this project has already found twice before, at two
 different scales: Phase 3A's own (tiny, ~0.001%) sum-of-KRD-vs-effective-
-duration convexity residual, and Phase 4.5A/4.5C's (large, up to 772bp of
+duration convexity residual, and Phase 4.5A/4.5C's (large, up to ~500bp of
 price) par-vs-zero-curve coupon effect. In every case, a single
 representative rate substitutes for a genuinely curve-shaped one, and the
 substitution error grows with how much of the curve's own shape sits
@@ -207,19 +207,19 @@ bump size.
 The clearest possible demonstration that convexity is computed correctly
 is showing it actually improves a prediction — the phase brief's own
 framing. For the portfolio's longest bond (JGB_40Y, snapshot curve,
-`ytm = 3.5272%`, `modified_duration = 21.0259`, `convexity = 643.88`):
+`ytm = 3.8508%`, `modified_duration = 20.3760`, `convexity = 614.91`):
 
 | Δy | Actual reprice | Duration-only | error | Duration + convexity | error |
 | --- | --- | --- | --- | --- | --- |
-| +10bp | −2.0708% | −2.1026% | 0.0318% | −2.0704% | **0.0004%** |
-| +100bp | −18.1501% | −21.0259% | 2.8758% | −17.8065% | **0.3436%** |
-| +200bp | −31.6979% | −42.0517% | 10.3538% | −29.1741% | **2.5238%** |
-| −200bp | +58.6052% | +42.0517% | 16.5535% | +54.9293% | **3.6759%** |
+| +10bp | −2.0072% | −2.0376% | 0.0304% | −2.0069% | **0.0004%** |
+| +100bp | −17.6272% | −20.3760% | 2.7488% | −17.3015% | **0.3257%** |
+| +200bp | −30.8472% | −40.7521% | 9.9049% | −28.4539% | **2.3933%** |
+| −200bp | +56.5294% | +40.7521% | 15.7773% | +53.0503% | **3.4791%** |
 
 At a small move (10bp), both approximations are close, but
-duration+convexity is already ~80x more accurate. At the large moves the
+duration+convexity is already ~85x more accurate. At the large moves the
 brief specifically asks about (100–200bp), duration-alone's error grows
-into double digits (up to 16.6 percentage points on a −200bp shock) while
+into double digits (up to 15.8 percentage points on a −200bp shock) while
 duration+convexity stays within a few percentage points throughout — the
 second-order term is doing real, substantial work, not a cosmetic
 correction. `test_duration_plus_convexity_tracks_actual_reprice_better_than_duration_alone`
@@ -248,13 +248,13 @@ timing).
 
 | Bond | Price | YTM | Macaulay | Modified | Effective | Convexity |
 | --- | --- | --- | --- | --- | --- | --- |
-| JGB_2Y | 99.2174 | 1.3982% | 1.9851 | 1.9713 | 1.9712 | 4.88 |
-| JGB_5Y | 98.5171 | 1.8116% | 4.8342 | 4.7909 | 4.7898 | 25.82 |
-| JGB_10Y | 96.7707 | 2.3645% | 9.0945 | 8.9883 | 8.9718 | 90.29 |
-| JGB_20Y | 98.1408 | 3.1257% | 15.1286 | 14.8958 | 14.6498 | 271.43 |
-| JGB_30Y | 101.6310 | 3.4127% | 18.9035 | 18.5863 | 17.8702 | 464.87 |
-| JGB_40Y | 105.8248 | 3.5272% | 21.3967 | 21.0259 | 19.7945 | 643.88 |
-| **portfolio_total** | 99.3269 | 2.4966% | 10.7827 | 10.6258 | 10.3540 | 203.30 |
+| JGB_2Y | 98.5485 | 1.7416% | 1.9850 | 1.9679 | 1.9678 | 4.86 |
+| JGB_5Y | 96.5986 | 2.2225% | 4.8322 | 4.7791 | 4.7778 | 25.70 |
+| JGB_10Y | 92.3023 | 2.8919% | 9.0672 | 8.9379 | 8.9162 | 89.47 |
+| JGB_20Y | 91.2314 | 3.6199% | 14.9138 | 14.6487 | 14.3880 | 265.05 |
+| JGB_30Y | 94.1634 | 3.8289% | 18.4342 | 18.0879 | 17.4325 | 447.19 |
+| JGB_40Y | 98.9681 | 3.8508% | 20.7684 | 20.3760 | 19.4411 | 614.91 |
+| **portfolio_total** | 94.8836 | 2.9311% | 10.6100 | 10.4336 | 10.1970 | 196.56 |
 
 ---
 
@@ -272,7 +272,7 @@ this reason, growing with how far settlement sits from a coupon date.
 
 **6.2 Modified duration and effective duration are different sensitivities
 that diverge with real curve slope — a genuine, material effect at the
-long end, not a rounding-level one (§2).** A 6.2% relative gap at 40
+long end, not a rounding-level one (§2).** A 4.8% relative gap at 40
 years is not something to average away; a consumer needing "the" duration
 of a long JGB should be explicit about which of the two they mean.
 

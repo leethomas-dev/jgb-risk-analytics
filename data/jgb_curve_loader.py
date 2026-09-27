@@ -63,20 +63,23 @@ MAX_PLAUSIBLE_YIELD = 0.10  # +10%
 # served without any transformation. Keys are tenor in years, values percent.
 # Refresh by replacing both constants with a newer real curve (see §5).
 # ---------------------------------------------------------------------------
-SNAPSHOT_DATE = "2026-04-06"
+SNAPSHOT_DATE = "2026-08-31"
 SNAPSHOT_CURVE_PCT: dict[float, float] = {
-    0.083: 0.77,
-    0.25: 0.87,
-    0.5: 0.91,
-    1: 1.12,
-    2: 1.40,
-    3: 1.60,
-    5: 1.82,
-    7: 2.19,
-    10: 2.40,
-    20: 3.32,
-    30: 3.73,
-    40: 3.91,
+    1: 1.502,
+    2: 1.743,
+    3: 1.894,
+    4: 2.084,
+    5: 2.233,
+    6: 2.358,
+    7: 2.507,
+    8: 2.67,
+    9: 2.801,
+    10: 2.943,
+    15: 3.501,
+    20: 3.815,
+    25: 4.102,
+    30: 4.092,
+    40: 4.094,
 }
 
 # Column headers on the MOF CSV -> tenor in years. MOF's English CSV header

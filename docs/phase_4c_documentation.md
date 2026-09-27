@@ -47,62 +47,63 @@ metric="dollar") -> Path`, saving a PNG to `outputs/factor_exposure.png`.
 
 ### 1.1 Tenor alignment — the main design problem
 
-Phase 3A/3B's `key_rate_duration_portfolio` / `dv01_by_tenor_portfolio`
-compute a value at every tenor on whatever curve they're handed — by
-design, per `key_rate_duration.py`'s own docstring: "no assumption is
-made about how many tenors the curve has or which ones." Phase 4B's PCA
-loadings live on a *different* grid — whatever Phase 4A's ragged-tenor
-policy retained for its lookback window — and there's no guarantee the
-two match. Checked directly, they don't:
+The P&L formula multiplies two lists tenor by tenor: the portfolio's
+KRD/DV01 (Phase 3A/3B) and the factor's yield shock (Phase 4B). KRD is
+computed at whatever tenors the curve has; the shock only exists at the
+PCA's tenors. The two lists must sit on the same tenors, or the
+unmatched ones become missing values that pandas' `.sum()` silently
+skips — a wrong P&L with no error.
 
-| Source | Tenor grid (prefer_live=False) |
-| --- | --- |
-| `load_jgb_curve()` (Phase 1 snapshot) | 0.083, 0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30, 40 |
-| `load_jgb_curve_history()` (Phase 4A, 2yr window) | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40 |
+**When they differ.** On the default 2-year window they don't: today's
+curve (live, cache and snapshot alike) and the PCA share the same 15
+tenors (1–10, 15, 20, 25, 30, 40Y). They differ in two cases:
 
-Only 9 of the 15 PCA tenors are on Phase 1's grid at all; Phase 1's three
-sub-1-year bills never appear on Phase 4A's grid, since the historical
-file has never published one.
+- **A longer PCA window** — the real, everyday case. Phase 4A keeps only
+  tenors with a full history across the window, and MOF introduced the
+  long maturities over time, so a longer window loses them:
 
-Two ways to reconcile this were available:
+  | PCA window | PCA tenors |
+  | --- | --- |
+  | 2Y, 10Y | 1–10, 15, 20, 25, 30, 40 (all 15) |
+  | 20Y | 1–10, 15, 20, 25, 30 (no 40Y) |
+  | 30Y | 1–10, 15, 20 (no 25/30/40Y) |
 
-1. **Restrict to the intersection** — keep only the 9 shared tenors,
-   drop the rest from both sides.
-2. **Recompute KRD/DV01 directly on the PCA's own grid** — build a curve
-   whose tenor points are exactly the PCA tenors, with yield *levels*
-   taken from Phase 1's curve via `bond_pricing.curve_yield_at()` (the
-   same straight-line interpolation `price_bond` already uses for every
-   cash flow that doesn't land on a curve grid point), then run
-   `key_rate_duration_portfolio` / `dv01_by_tenor_portfolio` on that
-   curve unmodified.
+- **A curve on a different grid** — e.g. if MOF ever adds or drops a
+  maturity. (Until 2026-09-27 the Phase 1 snapshot itself was a 12-tenor
+  curve with sub-year bills; it now matches live — see
+  `docs/phase_1_documentation.md` §1.2.)
 
-This module uses (2), implemented in `_curve_aligned_to_pca_grid()`, for
-two reasons. First, (1) throws away real information for no benefit —
-none of it is fabricated, but a portfolio bond's sensitivity at a tenor
-the intersection excludes doesn't disappear from the portfolio, it just
-disappears from the analysis. Second, and more fundamentally, KRD isn't
-safe to reconcile by interpolating the *KRD values themselves* across
-grids the way (1) implicitly would for the tenors it does keep: a KRD is
-a tent-shaped sensitivity tied to its own grid's specific neighboring
-points (`key_rate_duration.py`'s own docstring), not a smooth function of
-maturity — there's no valid way to ask "what would the KRD at 15Y have
-been on a grid that never had a 15Y point" by interpolation. (2) sidesteps
-the question entirely: `key_rate_duration_portfolio` already supports an
-arbitrary grid by design, so recomputing it fresh on the PCA's own grid
-needs no new capability, only a curve with the right tenor points — and
-building *that* is exactly what `curve_yield_at`'s interpolation is for.
+**Three ways to reconcile them:**
 
-This means every KRD/DV01 number this module reports is a **fresh
-computation on the PCA-aligned grid**, not a lookup into Phase 3A/3B's
-own native-grid tables. The two are honestly different: on Phase 1's
-native 12-tenor grid, this portfolio's DV01 ultra-long (≥20Y) share is
-**55.7%** (`compute_ultra_long_profile`, Phase 3C); on the PCA-aligned
-15-tenor grid, it's **52.6%**. Both are real, correctly-computed numbers
-— a denser grid splits the same total risk across more tent shapes,
-shifting a few points of share without changing the total. The
-qualitative finding (roughly half the book's rate risk sits at 20Y+) is
-stable across both; the exact percentage is grid-dependent, and that
-dependency is disclosed here rather than left for a reader to discover.
+1. **Keep only the shared tenors.** Rejected: throws away real risk — a
+   bond's exposure at a dropped tenor doesn't leave the portfolio, only
+   the analysis.
+2. **Interpolate the KRD values onto the PCA's tenors.** Rejected: a KRD
+   is a tent-shaped sensitivity tied to its own grid's neighbouring
+   points (`key_rate_duration.py`'s docstring), not a smooth function of
+   maturity, so it can't be moved to another grid.
+3. **Rebuild the curve on the PCA's tenors, then recompute KRD/DV01.**
+   Chosen. Yields at any PCA tenor the curve lacks come from
+   `bond_pricing.curve_yield_at()` — the same straight-line
+   interpolation `price_bond` already uses for every cash flow between
+   grid points. `key_rate_duration_portfolio` already accepts any grid,
+   so nothing new is needed. Implemented in `_curve_aligned_to_pca_grid()`.
+
+**Why recomputing matters on a longer window.** With a 20Y window there's
+no 40Y point, so the 40Y bond's cash flows beyond 30Y take the 30Y yield
+(flat extrapolation). Bumping 30Y therefore moves them too: the 40Y
+bond's risk folds into the 30Y KRD instead of vanishing. Checked on the
+committed data: recomputed 30Y KRD **2.717** vs. native 30Y + 40Y
+**2.717**; total KRD **10.197** both ways
+(`test_risk_beyond_the_pca_grid_moves_to_its_last_tenor_rather_than_vanishing`).
+Simply deleting the 40Y column would have lost that risk.
+
+On the default window the step changes nothing — the rebuilt curve is
+the curve itself (`test_alignment_is_a_no_op_when_the_grids_already_match`)
+— so this module's KRD/DV01 match Phase 3A/3B/3C's exactly. On a longer
+window they're a fresh computation on the PCA's grid, and per-tenor
+figures (e.g. the ≥20Y risk share) will differ from Phase 3C's: the same
+total risk split across different tenors.
 
 **Extrapolation, checked rather than assumed.** If a PCA tenor fell
 outside Phase 1's curve range, `curve_yield_at` would extrapolate flat
@@ -129,13 +130,14 @@ convexity an actual reprice under the full shocked curve would show.
 Rather than assume that gap is small, `__main__` checks it: build the
 shocked curve (`aligned_curve.yield + shock`), reprice the whole
 portfolio via `price_portfolio`, and compare. On the project's default
-2-year window (`prefer_live=False`):
+2-year window and the committed data (`prefer_live=False`: history
+2024-09-02 to 2026-08-31, curve snapshot for 2026-08-31):
 
-| Component | Linear estimate | Exact reprice | Gap |
+| Component | Linear estimate | Exact reprice | Gap (linear − exact) |
 | --- | --- | --- | --- |
-| PC1 | -0.2923% | -0.2943% | -0.0020 pp |
-| PC2 | -0.0599% | -0.0628% | -0.0029 pp |
-| PC3 | +0.0050% | +0.0044% | -0.0007 pp |
+| PC1 | -0.2874% | -0.2847% | -0.0027 pp |
+| PC2 | -0.0570% | -0.0571% | +0.0001 pp |
+| PC3 | +0.0049% | +0.0040% | +0.0008 pp |
 
 All three gaps are a fraction of a basis point of price — the linear
 estimate is a good approximation *at these shock sizes* (component
@@ -195,21 +197,21 @@ data (`prefer_live=False`):
 
 | Component | Variance share | % P&L (+1 std) | $ P&L (+1 std, per 100 face) |
 | --- | --- | --- | --- |
-| PC1 | 75.3% | -0.29% | -0.293 |
-| PC2 | 20.5% | -0.06% | -0.063 |
-| PC3 | 1.7% | +0.01% | +0.004 |
+| PC1 | 75.3% | -0.29% | -0.271 |
+| PC2 | 20.5% | -0.06% | -0.054 |
+| PC3 | 1.7% | +0.005% | +0.004 |
 
-**PC1 dominates**, by roughly 4-5x the next-largest component. This
+**PC1 dominates**, by roughly 5x the next-largest component. This
 isn't only because PC1 explains the most curve-change variance — its
 loadings are also checked directly to stay elevated from the belly of
 the curve through the 40Y point (0.28–0.32 from 8Y to 40Y, vs. 0.08–0.16
 for 1Y–3Y), rather than being flat across all tenors. A "level" factor
 with that shape moves the long end by roughly as much as, or slightly
 more than, the middle of the curve — and this portfolio's DV01 is
-already concentrated exactly there: **51.8%** of it sits at 20Y or beyond
-on the PCA-aligned grid (§1.1), consistent with Phase 3C's finding
-(**55.7%** on Phase 1's native grid) that this portfolio's ultra-long
-holdings dominate its overall interest-rate risk. The two results agree
+already concentrated exactly there: **51.2%** of it sits at 20Y or beyond
+— the same figure as Phase 3C's, since on the default window the two
+grids match (§1.1) — so this portfolio's ultra-long holdings dominate
+its overall interest-rate risk. The two results agree
 because both are reading the same underlying portfolio and the same
 underlying curve shape — not because one was built to match the other.
 
@@ -233,11 +235,11 @@ conditional on Phase 4B's chosen 2-year, post-YCC window
 shift the split between PC1 and PC2 and, with it, exactly how dominant
 PC1 looks.
 
-**3.3 Grid-dependent risk shares (§1.1).** The 51.8% vs. 55.7%
-ultra-long-share gap between this module's PCA-aligned grid and Phase
-3C's native grid is real and disclosed, not an error in either — but a
-reader comparing the two documents' numbers directly needs to know they
-were computed on different grids.
+**3.3 Grid-dependent risk shares on longer windows (§1.1).** On the
+default window this module's per-tenor KRD/DV01 equal Phase 3C's. On a
+window long enough to drop tenors (20Y+), the same total risk is split
+across fewer tenors, so per-tenor figures and shares like "≥20Y" differ
+from Phase 3C's — real and expected, not an error in either.
 
 **3.4 A historical covariance estimate assumes the recent past is a
 reasonable guide to near-future curve behavior** — Phase 4B's own
@@ -287,6 +289,6 @@ the portfolio and curve through their own loaders (Phase 1, Phase 2A)
 and reuses Phase 3A/3B's pricing functions unmodified, inheriting their
 re-anchoring policy rather than adding a new one
 (`docs/phase_1_documentation.md` §5). Its own KRD/DV01 numbers are real
-computations, not copies of Phase 3A/3B/3C's — see §1.1 for why they can
-legitimately differ from those modules' own native-grid figures for the
-same portfolio and (approximately) the same curve.
+computations on the PCA's grid, not copies of Phase 3A/3B/3C's. They
+match those modules' figures exactly on the default window and can
+legitimately differ on a longer one (§1.1).

@@ -5,8 +5,9 @@ Covers: linear interpolation between curve tenor points; the flat
 extrapolation policy, exercised directly and through price_bond; an
 analytic check against the closed-form flat-yield bond price formula
 (validates discounting independently of curve shape); par/premium/discount
-sanity checks; genuine grid-independence against BOTH the 12-point
-snapshot and a 15-point live/cache-shaped fixture (not merely asserted);
+sanity checks; genuine grid-independence against the 15-point snapshot,
+a 15-point live/cache-shaped fixture, and a 12-point fixture with
+sub-year bills (not merely asserted);
 input validation; and portfolio-level pricing via the config loader.
 
 All curve loading uses prefer_live=False for determinism.
@@ -56,11 +57,22 @@ def _build_live_grid_fixture() -> pd.DataFrame:
     """A 15-point curve shaped exactly like the live/cache tenor grid (Phase 1
     §4.5): the real _MOF_TENOR_COLUMNS tenor set (1Y..10Y, 15Y, 20Y, 25Y, 30Y,
     40Y, no sub-year points), with synthetic-but-monotonic yields -- not real
-    MOF data, since this fixture's only job is to have a different point
-    count and tenor set than the snapshot for the grid-independence test."""
+    MOF data, since this fixture's only job is to be a second, independent
+    curve on the live grid for the grid-independence test."""
     tenors = sorted(_MOF_TENOR_COLUMNS.values())
     yields = [0.005 + 0.00075 * t for t in tenors]
     return pd.DataFrame({"maturity_years": tenors, "yield": yields})
+
+
+def _build_sub_year_grid_fixture() -> pd.DataFrame:
+    """A 12-point curve WITH sub-year bills (1M, 3M, 6M) and without
+    4/6/8/9/15/25Y -- the Phase 1 snapshot's grid before it was refreshed
+    to the 15-tenor MOF grid (values are that old 2026-04-06 snapshot's).
+    No real data source serves this shape any more; kept so the sub-year
+    code paths stay tested."""
+    tenors = [0.083, 0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30, 40]
+    pct = [0.77, 0.87, 0.91, 1.12, 1.40, 1.60, 1.82, 2.19, 2.40, 3.32, 3.73, 3.91]
+    return pd.DataFrame({"maturity_years": [float(t) for t in tenors], "yield": [y / 100.0 for y in pct]})
 
 
 # --------------------------------------------------------------------------
@@ -204,28 +216,34 @@ def test_zero_coupon_bond_prices_below_face():
 
 
 # --------------------------------------------------------------------------
-# Grid independence -- genuinely tested against BOTH real grid shapes
+# Grid independence -- genuinely tested against every grid shape
 # --------------------------------------------------------------------------
 
 
-def test_snapshot_and_live_grid_fixtures_have_the_documented_shapes():
+def test_snapshot_and_grid_fixtures_have_the_documented_shapes():
     # Sanity-checks the fixtures themselves before relying on them below.
+    # The snapshot now sits on the same 15-tenor grid as live/cache.
     snapshot_curve = load_jgb_curve(prefer_live=False)
     live_like_curve = _build_live_grid_fixture()
-    assert len(snapshot_curve) == 12
-    assert len(live_like_curve) == 15
+    assert len(snapshot_curve) == 15
+    assert list(snapshot_curve["maturity_years"]) == list(live_like_curve["maturity_years"])
+    assert len(_build_sub_year_grid_fixture()) == 12
 
 
-@pytest.mark.parametrize("build_curve", [lambda: load_jgb_curve(prefer_live=False), _build_live_grid_fixture])
-def test_price_bond_correct_against_both_grid_shapes(build_curve):
+@pytest.mark.parametrize(
+    "build_curve",
+    [lambda: load_jgb_curve(prefer_live=False), _build_live_grid_fixture, _build_sub_year_grid_fixture],
+)
+def test_price_bond_correct_against_every_grid_shape(build_curve):
     """The same bond, priced through the same price_bond code path, against
-    the 12-point snapshot grid and the 15-point live/cache-shaped grid --
-    verified each time against an independently computed expected price
-    (not merely "it ran without crashing")."""
+    the 15-point snapshot, the 15-point live/cache-shaped fixture and the
+    12-point sub-year fixture -- verified each time against an
+    independently computed expected price (not merely "it ran without
+    crashing")."""
     curve = build_curve()
     face, coupon_rate, maturity, freq = 100.0, 0.025, 17.0, 2  # 17Y: falls
-    # between different neighbor pairs on each grid (10/20 on the snapshot,
-    # 15/20 on the live-shaped grid) -- exercises each grid's own points.
+    # between different neighbor pairs on each grid (15/20 on the 15-point
+    # grid, 10/20 on the sub-year fixture) -- exercises each grid's own points.
 
     price = price_bond(face, coupon_rate, maturity, curve, freq=freq)
 
@@ -242,32 +260,31 @@ def test_price_bond_correct_against_both_grid_shapes(build_curve):
     assert price == pytest.approx(expected)
 
 
-def test_yield_at_exact_shared_tenor_matches_both_grids_own_quote():
-    # 10Y is an exact tenor point on BOTH grids -- no interpolation error
-    # should occur, on either one, regardless of how many other points
+def test_yield_at_exact_shared_tenor_matches_every_grids_own_quote():
+    # 10Y is an exact tenor point on every grid -- no interpolation error
+    # should occur, on any of them, regardless of how many other points
     # surround it.
-    snapshot_curve = load_jgb_curve(prefer_live=False)
-    live_like_curve = _build_live_grid_fixture()
-    for curve in (snapshot_curve, live_like_curve):
+    for curve in (load_jgb_curve(prefer_live=False), _build_live_grid_fixture(), _build_sub_year_grid_fixture()):
         row = curve.loc[curve["maturity_years"] == 10.0].iloc[0]
         assert curve_yield_at(curve, 10.0) == pytest.approx(row["yield"])
 
 
-def test_first_coupon_requires_extrapolation_on_live_grid_but_not_snapshot():
+def test_first_coupon_requires_extrapolation_on_live_grid_but_not_sub_year_grid():
     # Concrete illustration of the extrapolation-is-not-hypothetical point
-    # from curve_yield_at's docstring: the live-shaped grid's shortest tenor
-    # is 1Y, so a bond's first semiannual coupon (t=0.5) is below it and
-    # must hit the flat-extrapolation branch; the snapshot grid's shortest
-    # tenor is 1M, well below 0.5, so the same lookup interpolates normally.
-    live_like_curve = _build_live_grid_fixture()
+    # from curve_yield_at's docstring: the real grid's shortest tenor is 1Y
+    # (live, cache and snapshot alike), so a bond's first semiannual coupon
+    # (t=0.5) is below it and must hit the flat-extrapolation branch; a grid
+    # with bills starts at 1M, well below 0.5, so the same lookup
+    # interpolates normally.
     snapshot_curve = load_jgb_curve(prefer_live=False)
-    assert live_like_curve["maturity_years"].min() == 1.0
-    assert snapshot_curve["maturity_years"].min() < 0.5
+    sub_year_curve = _build_sub_year_grid_fixture()
+    assert snapshot_curve["maturity_years"].min() == 1.0
+    assert sub_year_curve["maturity_years"].min() < 0.5
 
-    shortest_live_yield = live_like_curve.sort_values("maturity_years")["yield"].iloc[0]
-    assert curve_yield_at(live_like_curve, 0.5) == pytest.approx(shortest_live_yield)
-    assert curve_yield_at(snapshot_curve, 0.5) != pytest.approx(
-        snapshot_curve.sort_values("maturity_years")["yield"].iloc[0]
+    shortest_snapshot_yield = snapshot_curve.sort_values("maturity_years")["yield"].iloc[0]
+    assert curve_yield_at(snapshot_curve, 0.5) == pytest.approx(shortest_snapshot_yield)
+    assert curve_yield_at(sub_year_curve, 0.5) != pytest.approx(
+        sub_year_curve.sort_values("maturity_years")["yield"].iloc[0]
     )
 
 

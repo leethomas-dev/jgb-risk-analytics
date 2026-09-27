@@ -8,8 +8,9 @@ bootstrap arithmetic, not the par-curve assumption's fidelity to what MOF
 actually publishes; the short-end design decision, checked as an
 algebraic identity rather than merely asserted; the flat-curve sanity
 check; monotonic maturities and strictly-decreasing discount factors on
-real data; genuine grid-independence against both the 12-point snapshot
-and a 15-point live/cache-shaped fixture; the freq parameter actually
+real data; genuine grid-independence against the 15-point snapshot, a
+15-point live/cache-shaped fixture, and a 12-point fixture with sub-year
+bills; the freq parameter actually
 being used; the coupon-effect sensitivity check (implied_ytm,
 coupon_effect_sensitivity) that quantifies the par-curve simplification's
 error; and input validation.
@@ -43,11 +44,22 @@ def _flat_curve(y: float, tenors=(0.5, 1, 2, 5, 10, 20, 30, 40)) -> pd.DataFrame
 def _build_live_grid_fixture() -> pd.DataFrame:
     """A 15-point curve shaped exactly like the live/cache tenor grid
     (no sub-year points) -- mirrors test_bond_pricing.py's own fixture, so
-    this module is checked against the same two real grid shapes every
-    other pricing-adjacent module in this project is."""
+    this module is checked against the same grid shapes every other
+    pricing-adjacent module in this project is."""
     tenors = sorted(_MOF_TENOR_COLUMNS.values())
     yields = [0.005 + 0.00075 * t for t in tenors]
     return pd.DataFrame({"maturity_years": tenors, "yield": yields})
+
+
+def _build_sub_year_grid_fixture() -> pd.DataFrame:
+    """A 12-point curve WITH sub-year bills (1M, 3M, 6M) -- the Phase 1
+    snapshot's grid before it was refreshed to the 15-tenor MOF grid
+    (values are that old 2026-04-06 snapshot's). Mirrors
+    test_bond_pricing.py's fixture; kept so the money-market branch stays
+    tested now that no real data source has sub-year points."""
+    tenors = [0.083, 0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30, 40]
+    pct = [0.77, 0.87, 0.91, 1.12, 1.40, 1.60, 1.82, 2.19, 2.40, 3.32, 3.73, 3.91]
+    return pd.DataFrame({"maturity_years": [float(t) for t in tenors], "yield": [y / 100.0 for y in pct]})
 
 
 # --------------------------------------------------------------------------
@@ -55,7 +67,10 @@ def _build_live_grid_fixture() -> pd.DataFrame:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("build_curve", [lambda: load_jgb_curve(prefer_live=False), _build_live_grid_fixture])
+@pytest.mark.parametrize(
+    "build_curve",
+    [lambda: load_jgb_curve(prefer_live=False), _build_live_grid_fixture, _build_sub_year_grid_fixture],
+)
 def test_original_par_bonds_reprice_to_par_off_the_zero_curve(build_curve):
     curve = build_curve()
     zero_curve = bootstrap_zero_curve(curve)
@@ -111,7 +126,7 @@ def test_zero_rate_at_first_grid_point_equals_quoted_par_yield():
 
 
 def test_sub_1y_money_market_tenors_carried_through_unchanged():
-    curve = load_jgb_curve(prefer_live=False)  # snapshot has 1M/3M tenors below 1Y
+    curve = _build_sub_year_grid_fixture()  # has 1M/3M/6M tenors below 1Y
     money_market_rows = curve.loc[curve["maturity_years"] < MONEY_MARKET_CUTOFF_YEARS]
     assert len(money_market_rows) >= 2  # sanity-check the fixture itself
 
@@ -150,11 +165,14 @@ def test_discount_factors_are_strictly_decreasing_with_maturity():
     assert (diffs < 0).all()
 
 
-def test_grid_spans_from_first_period_to_the_curve_own_longest_maturity():
-    curve = load_jgb_curve(prefer_live=False)
+@pytest.mark.parametrize("build_curve", [lambda: load_jgb_curve(prefer_live=False), _build_sub_year_grid_fixture])
+def test_grid_spans_from_first_period_to_the_curve_own_longest_maturity(build_curve):
+    # Starts at whichever is shorter: the curve's own first tenor (a bill,
+    # when there is one) or the first semiannual coupon period (0.5Y).
+    curve = build_curve()
     zero_curve = bootstrap_zero_curve(curve)
     assert zero_curve["maturity_years"].max() == pytest.approx(curve["maturity_years"].max())
-    assert zero_curve["maturity_years"].min() == pytest.approx(curve["maturity_years"].min())
+    assert zero_curve["maturity_years"].min() == pytest.approx(min(curve["maturity_years"].min(), 0.5))
 
 
 # --------------------------------------------------------------------------
@@ -162,13 +180,18 @@ def test_grid_spans_from_first_period_to_the_curve_own_longest_maturity():
 # --------------------------------------------------------------------------
 
 
-def test_snapshot_and_live_grid_fixtures_have_the_documented_shapes():
-    assert len(load_jgb_curve(prefer_live=False)) == 12
-    assert len(_build_live_grid_fixture()) == 15
+def test_snapshot_and_grid_fixtures_have_the_documented_shapes():
+    snapshot_curve = load_jgb_curve(prefer_live=False)
+    assert len(snapshot_curve) == 15
+    assert list(snapshot_curve["maturity_years"]) == list(_build_live_grid_fixture()["maturity_years"])
+    assert len(_build_sub_year_grid_fixture()) == 12
 
 
-@pytest.mark.parametrize("build_curve", [lambda: load_jgb_curve(prefer_live=False), _build_live_grid_fixture])
-def test_bootstraps_cleanly_against_both_grid_shapes(build_curve):
+@pytest.mark.parametrize(
+    "build_curve",
+    [lambda: load_jgb_curve(prefer_live=False), _build_live_grid_fixture, _build_sub_year_grid_fixture],
+)
+def test_bootstraps_cleanly_against_every_grid_shape(build_curve):
     curve = build_curve()
     zero_curve = bootstrap_zero_curve(curve)
     assert not zero_curve.isna().any().any()

@@ -96,7 +96,7 @@ real run, not only recoverable by inspecting the code's output object.
 
 ## 2. The finding: ~40% weight, ~51% risk
 
-A real run against the live curve and the default portfolio:
+A real run against the committed snapshot curve (MOF, 2026-08-31; `prefer_live=False`, so reproducible offline) and the default portfolio:
 
 ```
 Total portfolio KRD:   10.20 years,  of which ultra-long: 5.21 (51.1%)

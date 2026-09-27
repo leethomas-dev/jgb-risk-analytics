@@ -19,11 +19,11 @@ whatever curve it's given (see models/key_rate_duration.py's own
 docstring: "no assumption... KRD tenors are read off whatever curve the
 caller passes in"). Phase 4B's PCA loadings live on a DIFFERENT grid --
 whatever load_jgb_curve_history's ragged-tenor policy retained for its
-lookback window, which need not match load_jgb_curve()'s grid at all
-(confirmed directly: the Phase 1 snapshot's 12-tenor grid includes
-sub-1-year bills {0.083, 0.25, 0.5} that Phase 4A's grid never has, while
-Phase 4A's 15-tenor grid includes {4, 6, 8, 9, 15, 25} that Phase 1's
-snapshot never has -- fewer than half the tenors are shared).
+lookback window, which need not match load_jgb_curve()'s grid. On the
+default 2-year window they happen to match (the same 15 tenors), but a
+longer window drops tenors MOF hadn't issued yet at its start (20Y
+window: no 40Y; 30Y window: no 25/30/40Y), and a curve on a different
+grid (MOF changing its maturities) breaks the match the other way.
 
 Two ways to reconcile this were available, and only one keeps every
 number meaningful:
@@ -37,7 +37,7 @@ number meaningful:
       already relies on for every cash flow that doesn't land exactly on
       a curve grid point.
 
-(a) throws away real information (a portfolio bond's KRD at a tenor nulled
+(a) throws away real information (a portfolio bond's KRD at a tenor dropped
 out by the intersection isn't wrong, it's just gone) and, worse, KRD
 values aren't safe to interpolate directly even for tenors kept on
 "the other side" -- a KRD is a tent-shaped sensitivity tied to its own
@@ -170,10 +170,10 @@ class PortfolioFactorExposureResult:
         interpolation, to get a yield level. Empty on this project's real
         data (checked, see _curve_aligned_to_pca_grid).
     krd_by_tenor / dv01_by_tenor : the portfolio's total KRD / DV01 on
-        aligned_curve's grid -- NOT the same numbers Phase 3A/3B report
-        on Phase 1's native grid (a different, denser or sparser grid
-        splits the same total risk differently across tenors; see
-        docs/phase_4c_documentation.md for the actual gap).
+        aligned_curve's grid. Identical to Phase 3A/3B's when the grids
+        already match (the default window); on a longer window a sparser
+        grid splits the same total risk across fewer tenors (see
+        docs/phase_4c_documentation.md §1.1).
     base_price : portfolio weighted price on aligned_curve, currency per
         100 face value -- Phase 2B's own pricing convention.
     exposures : one FactorExposure per component in the PCA fit, in

@@ -18,10 +18,10 @@ WHY A THRESHOLD, NOT A HARDCODED TENOR LIST: which tenors count as
 ultra-long is decided by applying the threshold (>= 20Y) to whatever
 tenor grid the curve actually returns at call time, not a fixed list --
 same non-fixed-tenor-grid pattern as every other module here. Concretely:
-this project's snapshot data source classifies {20, 30, 40} as
-ultra-long; its live data source classifies {20, 25, 30, 40} -- different
-sets, both correct, because both are the threshold applied fresh to that
-grid. A hardcoded list would have gotten one of the two wrong.
+today's 15-tenor MOF grid classifies {20, 25, 30, 40} as ultra-long; the
+Phase 1 snapshot's earlier 12-tenor grid (no 25Y) classified {20, 30,
+40} -- different sets, both correct, because both are the threshold
+applied fresh to that grid. A hardcoded list would get one of them wrong.
 
 Reads the portfolio and curve through their own loaders; hardcodes
 neither.

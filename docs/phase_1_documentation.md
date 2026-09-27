@@ -50,14 +50,25 @@ next to the data so refreshing it later is a two-line edit (§5).
 
 ### 1.2 The offline snapshot (`_snapshot_curve_dataframe`)
 
-The last-resort fallback: a real MOF curve for `2026-04-06`, served
+The last-resort fallback: a real MOF curve for `2026-08-31`, served
 exactly as observed — no adjustment, no re-anchoring to a more recent
-rate.
+rate. It's the last row of the committed history file
+(`data/jgb_curve_history_snapshot.csv`, Phase 4A), so offline, today's
+curve and the history end on the same date.
 
-| tenor | yield (%) |
-| --- | --- |
-| 1M | 0.77 | 3M | 0.87 | 6M | 0.91 | 1Y | 1.12 | 2Y | 1.40 | 3Y | 1.60 |
-| 5Y | 1.82 | 7Y | 2.19 | 10Y | 2.40 | 20Y | 3.32 | 30Y | 3.73 | 40Y | 3.91 |
+| Tenor | 1Y | 2Y | 3Y | 4Y | 5Y | 6Y | 7Y | 8Y |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Yield (%) | 1.502 | 1.743 | 1.894 | 2.084 | 2.233 | 2.358 | 2.507 | 2.670 |
+
+| Tenor | 9Y | 10Y | 15Y | 20Y | 25Y | 30Y | 40Y |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Yield (%) | 2.801 | 2.943 | 3.501 | 3.815 | 4.102 | 4.092 | 4.094 |
+
+**Same tenors as live.** Until 2026-09-27 the snapshot was a 12-point
+curve (1M/3M/6M bills, no 4/6/8/9/15/25Y) for `2026-04-06`. It was
+replaced so all three sources share one grid; the old curve survives
+only as a test fixture (`_build_sub_year_grid_fixture`) so the sub-year
+code paths stay tested.
 
 **Why unmodified, not adjusted to a recent print:** an earlier version
 shifted this curve to match a more recent 10-year rate. That was removed
@@ -128,11 +139,11 @@ rather than treating it as an error.
 
 ## 2. Where the data comes from
 
-The embedded snapshot's numbers come from Trading Economics, a data
-aggregator that redistributes rates rather than publishing them first-hand
-— the primary source is Japan's Ministry of Finance (MOF) directly. The
-live pull and the cache both go straight to MOF, so only the offline
-snapshot carries this secondary-source gap (§3.3 below).
+All three sources come straight from Japan's Ministry of Finance (MOF):
+the live pull and cache from MOF's current-curve file, and the snapshot
+from MOF's historical file (via Phase 4A's committed copy). The earlier
+snapshot came from Trading Economics, an aggregator; that
+secondary-source gap is gone.
 
 ---
 
@@ -149,10 +160,9 @@ A run served from the cache can't be reproduced from the project's source
 code alone. `prefer_live=False` sidesteps this by skipping the cache
 entirely for any run that needs to be reproducible.
 
-**3.3 The snapshot is secondary-sourced.** It comes from an aggregator,
-not MOF directly, so it can differ slightly from the primary reference
-rate in timing or rounding. The live pull and cache don't have this
-issue.
+**3.3 (Resolved) The snapshot was secondary-sourced.** The pre-2026-09-27
+snapshot came from an aggregator; the current one is MOF's own published
+curve (§2).
 
 **3.4 The live pull's error-checking has real gaps.** It checks that a
 parsed curve has enough tenors, sensible maturities, and yields inside a
@@ -163,12 +173,12 @@ would still land inside the plausible band while being 100× too small. A
 bad pull that passes these checks gets written to the cache and served on
 later offline runs until the next good pull.
 
-**3.5 The three sources don't return the same tenors.** Live/cache: 15
-points, 1Y–40Y, no maturities under a year. Snapshot: 12 points, 1 month
-to 40 years, missing several mid-range points the live source has. Any
-downstream code that assumes a fixed list of tenors will silently break
-depending on which source served the curve — every phase in this project
-derives its tenor set from the curve at runtime instead, for this reason.
+**3.5 The tenor grid isn't guaranteed.** All three sources currently
+return the same 15 points (1Y–40Y, no maturities under a year), but that's
+a fact about today's data, not a contract: MOF could add or drop a
+maturity, and the snapshot used to have a different 12-point grid. Every
+phase in this project derives its tenor set from the curve at runtime
+rather than assuming a fixed list, for this reason.
 
 **3.6 No historical series.** The loader only ever returns the latest
 curve — one date. MOF also publishes decades of daily history on the same

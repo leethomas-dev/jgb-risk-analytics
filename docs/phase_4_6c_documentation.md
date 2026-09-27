@@ -143,8 +143,8 @@ summing them inside `price_bond`).
 reproducible):
 
 ```
-Total present value (this module):        99.326949
-Portfolio-weighted clean price (Phase 2B): 99.326949
+Total present value (this module):        94.883605
+Portfolio-weighted clean price (Phase 2B): 94.883605
 ```
 
 Agreement to `rel=1e-9` — effectively exact, as expected, since both
@@ -165,8 +165,8 @@ summing to 1.0), that's exactly `100.0`.
 
 ```
 Total nominal cash flow (per 100 face value, portfolio-weighted): 146.7500
-Total present value:                                               99.3269
-Share landing at/beyond 20Y -- nominal: 36.5%   present value: 20.1%
+Total present value:                                               94.8836
+Share landing at/beyond 20Y -- nominal: 36.5%   present value: 19.0%
 ```
 
 The chart (`outputs/cash_flow_ladder_nominal.png`,
@@ -185,13 +185,13 @@ cash flow share adds up *every future dollar*, coupon and principal
 alike, weighted by how many payments a bond makes — a longer bond makes
 more coupon payments in absolute count, which pulls its own nominal share
 up somewhat past its value weight). But in **present-value** terms, that
-same ultra-long share drops to **20.1%** — telling a real, different
+same ultra-long share drops to **19.0%** — telling a real, different
 story: a far-future payment is discounted far more heavily than a near
 one, so the ultra-long segment's *cash* looks far less dominant once
-brought back to today's money than its **~51–56% share of the
+brought back to today's money than its **~51% share of the
 portfolio's interest-rate risk** (Phase 3C, Phase 4C) would suggest.
 
-**Why these three numbers (40% value weight, ~51–56% risk share, 20%
+**Why these three numbers (40% value weight, ~51% risk share, 19%
 PV-weighted cash share) don't have to agree, and don't:** they are three
 different lenses on the same six bonds. Value weight is a snapshot;
 risk share (KRD/DV01) measures *sensitivity*, which — per Phase 3C's own
@@ -254,7 +254,7 @@ legibility.
 simplifications** (Phase 2B §3.2) — every present-value figure here is
 only as accurate as the curve discounting it's built on.
 
-**7.5 The 40%-weight / ~51–56%-risk / 20%-PV-cash-share comparison (§5)
+**7.5 The 40%-weight / ~51%-risk / 19%-PV-cash-share comparison (§5)
 is illustrative-portfolio-specific.** A different portfolio's coupon
 structure or maturity mix could shift any of the three numbers
 independently — the *qualitative* relationship (risk share > value

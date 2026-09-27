@@ -158,28 +158,30 @@ inconsistent (that module's own docstring has the full reasoning).
 
 | Bond | Par price | Zero price | Price diff | Par duration | Zero duration | Duration diff | Par DV01 | Zero DV01 | DV01 diff |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| JGB_2Y | 99.2174 | 99.2124 | -0.51bp | 1.9712 | 1.9712 | -0.0000 | 0.0196 | 0.0196 | -0.01% |
-| JGB_5Y | 98.5171 | 98.4690 | -4.88bp | 4.7898 | 4.7895 | -0.0003 | 0.0472 | 0.0472 | -0.06% |
-| JGB_10Y | 96.7707 | 96.4054 | -37.74bp | 8.9718 | 8.9670 | -0.0049 | 0.0868 | 0.0864 | -0.43% |
-| **JGB_20Y** | 98.1408 | 95.0981 | **-310.03bp** | 14.6498 | 14.4910 | -0.1588 | 0.1438 | 0.1378 | -4.15% |
-| **JGB_30Y** | 101.6310 | 95.6015 | **-593.28bp** | 17.8702 | 17.2347 | -0.6355 | 0.1816 | 0.1648 | -9.28% |
-| **JGB_40Y** | 105.8248 | 97.6541 | **-772.10bp** | 19.7945 | 18.5268 | -1.2677 | 0.2095 | 0.1809 | **-13.63%** |
+| JGB_2Y | 98.5485 | 98.5439 | -0.47bp | 1.9678 | 1.9678 | -0.0000 | 0.0194 | 0.0194 | -0.01% |
+| JGB_5Y | 96.5986 | 96.5275 | -7.36bp | 4.7778 | 4.7774 | -0.0005 | 0.0462 | 0.0461 | -0.08% |
+| JGB_10Y | 92.3023 | 91.6987 | -65.40bp | 8.9162 | 8.9074 | -0.0088 | 0.0823 | 0.0817 | -0.75% |
+| **JGB_20Y** | 91.2314 | 88.1177 | **-341.30bp** | 14.3880 | 14.2119 | -0.1761 | 0.1313 | 0.1252 | -4.60% |
+| **JGB_30Y** | 94.1634 | 89.3891 | **-507.03bp** | 17.4325 | 16.9243 | -0.5081 | 0.1641 | 0.1513 | -7.84% |
+| **JGB_40Y** | 98.9681 | 94.0930 | **-492.59bp** | 19.4411 | 18.8032 | -0.6380 | 0.1924 | 0.1769 | **-8.05%** |
 
 **Portfolio-weighted totals:**
 
 ```
-Price:     par = 99.327   zero = 97.047   diff = -2.280
-Duration:  par = 10.354   zero = 10.107   diff = -0.247 years
-DV01:      par = 0.10383  zero = 0.09746  diff = -0.00637 (-6.13%)
+Price:     par = 94.884   zero = 93.047   diff = -1.837
+Duration:  par = 10.197   zero = 10.028   diff = -0.169 years
+DV01:      par = 0.09627  zero = 0.09172  diff = -0.00455 (-4.72%)
 ```
 
 **The finding: small at the front end, dramatic at the long end.** The
-2Y bond's price moves half a basis point; the 40Y bond's moves over
-**772 basis points** — 7.7% of price, on a *single* bond. This tracks the
-same mechanism Part A's own coupon-effect check already quantified from
-a different angle (`docs/phase_4_5a_documentation.md` §5): the further
-out a cash flow sits, the more the curve's own directly-quoted rate at
-that maturity diverges from a genuinely bootstrapped zero rate there. On
+2Y bond's price moves half a basis point; the 30Y bond's moves over
+**500 basis points** — 5.1% of price, on a *single* bond, with the 40Y
+close behind (493bp). This tracks the same mechanism Part A's own
+coupon-effect check already quantified from a different angle
+(`docs/phase_4_5a_documentation.md` §5): the further out a cash flow
+sits, the more the curve's own directly-quoted rate at that maturity
+diverges from a genuinely bootstrapped zero rate there — until the curve
+flattens (25Y–40Y all ~4.1%), which is why 40Y doesn't exceed 30Y. On
 an upward-sloping curve like this one, **the zero-curve basis prices
 consistently below the par basis** — the direction is checked directly
 (`test_zero_basis_prices_below_par_basis_for_this_portfolio`), not
@@ -192,11 +194,14 @@ tenors):**
 
 | Tenor | Par KRD | Zero KRD | Tenor | Par KRD | Zero KRD |
 | --- | --- | --- | --- | --- | --- |
-| 1Y | 0.0198 | 0.0205 | 10Y | 2.8243 | 2.8552 |
-| 2Y | 0.3356 | 0.3372 | **20Y** | 2.6719 | 2.6514 |
-| 3Y | 0.1010 | 0.1048 | **30Y** | 2.0554 | 1.9124 |
-| 5Y | 1.1011 | 1.1082 | **40Y** | 0.9544 | 0.8132 |
-| 7Y | 0.2849 | 0.2966 | | | |
+| 1Y | 0.0268 | 0.0276 | 9Y | 0.1365 | 0.1406 |
+| 2Y | 0.3372 | 0.3386 | 10Y | 2.3596 | 2.3678 |
+| 3Y | 0.0641 | 0.0661 | 15Y | 0.6247 | 0.6349 |
+| 4Y | 0.0833 | 0.0858 | **20Y** | 2.0705 | 2.0303 |
+| 5Y | 1.0136 | 1.0166 | **25Y** | 0.4212 | 0.4005 |
+| 6Y | 0.1017 | 0.1052 | **30Y** | 1.7706 | 1.6727 |
+| 7Y | 0.1147 | 0.1185 | **40Y** | 0.9463 | 0.8925 |
+| 8Y | 0.1262 | 0.1302 |  |  |  |
 
 The largest absolute per-tenor KRD swings sit at 30Y and 40Y, consistent
 with the per-bond finding above.
@@ -230,13 +235,15 @@ used throughout this project (`docs/phase_4b_documentation.md` §1.3,
 ### 3.2 The result
 
 Against the committed snapshot curve and the default 2-year PCA window
-(both `prefer_live=False`), Nelson-Siegel's fitted `tau = 33.954` years:
+(both `prefer_live=False`), Nelson-Siegel's fitted `tau = 50.0` years —
+the top of its search range, so this fit is flagged as not converged
+(`docs/phase_4_5b_documentation.md` §5; the live curve does the same):
 
 | Beta | PCA component | Cosine similarity |
 | --- | --- | --- |
 | `beta0` (level) | PC1 (level) | **0.962** — strong |
-| `beta1` (slope) | PC2 (slope) | **0.265** — weak |
-| `beta2` (curvature) | PC3 (curvature) | **0.079** — essentially none |
+| `beta1` (slope) | PC2 (slope) | **0.229** — weak |
+| `beta2` (curvature) | PC3 (curvature) | **0.112** — essentially none |
 
 **Reported as found, not smoothed into one story.** `beta0`'s shape is
 trivially flat (a constant `1` at every maturity); PCA's PC1 turns out to
@@ -254,19 +261,19 @@ around 25Y between two positive wings — a real hump-and-trough shape
 
 ### 3.3 Why — and the tau-dependence check that keeps this from overclaiming
 
-The mismatch traces to a specific, checkable cause: **`tau = 34` years is
+The mismatch traces to a specific, checkable cause: **`tau = 50` years is
 large relative to this project's 1-40Y tenor range**, so `f1`/`f2` barely
-decay across it — `f1` only falls from 0.985 at 1Y to 0.588 at 40Y,
+decay across it — `f1` only falls from 0.990 at 1Y to 0.688 at 40Y,
 nowhere near the sign change a genuine slope factor needs, and `f2`'s
 "hump" (centered near `m = tau`) never turns over within a 40-year grid
 at all. This is a property of *this specific fitted tau*, not of
 Nelson-Siegel's functional form in the abstract — checked directly, not
 assumed:
 
-- **Svensson's much smaller `tau1 = 2.855`** (Part B, same data) produces
-  a visibly steeper-decaying `beta1` shape and a correspondingly
-  stronger — though still partial — match to PC2 (cosine 0.522, roughly
-  double NS's).
+- **Svensson's much smaller `tau1 = 2.94`** (Part B, same data; this fit
+  does converge) produces a visibly steeper-decaying `beta1` shape and a
+  correspondingly stronger — though still partial — match to PC2 (cosine
+  0.522, more than double NS's).
 - **`models.diebold_li`'s comparison**, structurally different (a fixed,
   much smaller `tau = 7.0` years, and a *time-series* correlation of
   day-to-day score movements rather than a static shape comparison),
@@ -316,7 +323,7 @@ runs uses it automatically.
 concrete P&L figure.** The zero curve's own limitation
 (`docs/phase_4_5a_documentation.md` §1/§5 — MOF's curve is a fitted YTM
 series, treated as a par curve) flows directly into every number in §2.
-The 772bp 40Y price gap is the difference between two approximations, not
+The ~500bp 30Y price gap is the difference between two approximations, not
 between an approximation and ground truth.
 
 **5.3 The C2 loading comparison is a single cross-section, at one tau.**

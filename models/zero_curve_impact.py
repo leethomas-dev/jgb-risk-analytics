@@ -75,8 +75,8 @@ FINDING, REPORTED AS OBSERVED, NOT ASSUMED (docs/phase_4_5c_documentation.md
 §3 for the full account): beta0's shape (a flat, all-ones vector) matches
 PC1 closely -- PCA's own dominant "level" factor turns out to be close to
 flat over this tenor range. beta1 and beta2 do NOT resemble PC2/PC3
-closely under Nelson-Siegel's OWN best-fit tau (~34 years, Part B) --
-because a tau that large produces basis functions that barely decay
+closely under Nelson-Siegel's OWN best-fit tau (50 years, the top of
+its search range, Part B) -- because a tau that large produces basis functions that barely decay
 across a 1-40Y grid at all, so beta1's "slope" shape stays positive and
 high everywhere instead of swinging sign the way PC2 empirically does,
 and beta2's "hump" never turns over within the visible tenor range. This

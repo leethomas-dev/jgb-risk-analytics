@@ -38,6 +38,16 @@ def _build_live_grid_fixture() -> pd.DataFrame:
     return pd.DataFrame({"maturity_years": tenors, "yield": yields})
 
 
+def _build_sub_year_grid_fixture() -> pd.DataFrame:
+    """Same construction as tests/test_bond_pricing.py's fixture of the
+    same name -- the Phase 1 snapshot's old 12-point grid (with 1M/3M/6M
+    bills, no 25Y), kept as a second real-world grid shape now that the
+    snapshot itself sits on the 15-point live grid."""
+    tenors = [0.083, 0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30, 40]
+    pct = [0.77, 0.87, 0.91, 1.12, 1.40, 1.60, 1.82, 2.19, 2.40, 3.32, 3.73, 3.91]
+    return pd.DataFrame({"maturity_years": [float(t) for t in tenors], "yield": [y / 100.0 for y in pct]})
+
+
 # --------------------------------------------------------------------------
 # Threshold-derived classification (not a hardcoded tenor list)
 # --------------------------------------------------------------------------
@@ -47,10 +57,10 @@ def test_default_threshold_is_20_years():
     assert DEFAULT_ULTRA_LONG_THRESHOLD_YEARS == 20.0
 
 
-def test_ultra_long_tenors_on_snapshot_grid():
-    # Snapshot grid (Phase 1 §4.5): 1M,3M,6M,1Y,2Y,3Y,5Y,7Y,10Y,20Y,30Y,40Y.
+def test_ultra_long_tenors_on_sub_year_grid():
+    # Old snapshot grid: 1M,3M,6M,1Y,2Y,3Y,5Y,7Y,10Y,20Y,30Y,40Y.
     # >= 20 selects exactly {20, 30, 40}.
-    curve = load_jgb_curve(prefer_live=False)
+    curve = _build_sub_year_grid_fixture()
     portfolio = load_portfolio()
     profile = compute_ultra_long_profile(portfolio, curve)
     assert list(profile.ultra_long_tenors) == [20.0, 30.0, 40.0]
@@ -58,7 +68,7 @@ def test_ultra_long_tenors_on_snapshot_grid():
 
 def test_ultra_long_tenors_on_live_shaped_grid():
     # Live/cache grid: 1Y..10Y, 15Y, 20Y, 25Y, 30Y, 40Y. >= 20 selects
-    # {20, 25, 30, 40} -- a DIFFERENT set than the snapshot's, because the
+    # {20, 25, 30, 40} -- a DIFFERENT set than the sub-year grid's, because the
     # threshold is applied fresh to whatever grid is actually present, not
     # read off a fixed list. This is the test that would fail if someone
     # "simplified" the module to a hardcoded [20, 25, 30, 40].
@@ -69,11 +79,19 @@ def test_ultra_long_tenors_on_live_shaped_grid():
     assert 15.0 not in profile.ultra_long_tenors  # closest miss: below threshold
 
 
+def test_ultra_long_tenors_on_snapshot_grid():
+    # The snapshot now sits on the live grid, so it selects the same set.
+    curve = load_jgb_curve(prefer_live=False)
+    portfolio = load_portfolio()
+    profile = compute_ultra_long_profile(portfolio, curve)
+    assert list(profile.ultra_long_tenors) == [20.0, 25.0, 30.0, 40.0]
+
+
 def test_custom_threshold_changes_the_selected_tenors():
     curve = load_jgb_curve(prefer_live=False)
     portfolio = load_portfolio()
     profile = compute_ultra_long_profile(portfolio, curve, threshold_years=25.0)
-    assert list(profile.ultra_long_tenors) == [30.0, 40.0]
+    assert list(profile.ultra_long_tenors) == [25.0, 30.0, 40.0]
 
 
 # --------------------------------------------------------------------------

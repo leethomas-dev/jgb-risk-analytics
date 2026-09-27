@@ -53,14 +53,42 @@ def _portfolio():
 # --------------------------------------------------------------------------
 
 
-def test_curve_and_pca_grids_genuinely_differ_on_real_data():
+def _long_window_pca_result():
+    # 20Y reaches back before the 40Y bond existed, so Phase 4A's
+    # ragged-tenor policy drops 40Y from the PCA grid.
+    history = load_jgb_curve_history(lookback_years=20, prefer_live=False, verbose=False)
+    return compute_curve_pca(history)
+
+
+def test_alignment_is_a_no_op_when_the_grids_already_match():
+    # Default window: the PCA grid equals the curve's own 15-tenor grid, so
+    # the aligned curve is the curve itself.
+    curve = _curve()
+    aligned, _ = _curve_aligned_to_pca_grid(curve, _pca_result().tenors)
+    assert list(aligned["maturity_years"]) == list(curve["maturity_years"])
+    np.testing.assert_allclose(aligned["yield"].to_numpy(), curve["yield"].to_numpy())
+
+
+def test_curve_and_pca_grids_genuinely_differ_on_a_longer_window():
     # If this ever stops being true, the alignment machinery below is
     # untested against the actual problem it exists for.
     curve_tenors = set(_curve()["maturity_years"])
-    pca_tenors = set(_pca_result().tenors)
-    assert curve_tenors != pca_tenors
-    assert not pca_tenors.issubset(curve_tenors)
-    assert not curve_tenors.issubset(pca_tenors)
+    pca_tenors = set(_long_window_pca_result().tenors)
+    assert 40.0 not in pca_tenors
+    assert pca_tenors < curve_tenors
+
+
+def test_risk_beyond_the_pca_grid_moves_to_its_last_tenor_rather_than_vanishing():
+    # With no 40Y point, the 40Y bond's cash flows take the 30Y yield (flat
+    # extrapolation), so recomputing KRD on the PCA grid folds 40Y risk
+    # into 30Y. Merely dropping the 40Y column would lose it.
+    curve = _curve()
+    portfolio = _portfolio()
+    native_krd = key_rate_duration_portfolio(portfolio, curve).loc["portfolio_total"]
+    result = compute_portfolio_factor_exposure(portfolio, curve, _long_window_pca_result())
+
+    assert result.krd_by_tenor.sum() == pytest.approx(native_krd.sum(), rel=1e-3)
+    assert result.krd_by_tenor[30.0] == pytest.approx(native_krd[30.0] + native_krd[40.0], rel=1e-3)
 
 
 def test_krd_and_dv01_are_indexed_on_the_pca_grid_not_the_curve_grid():

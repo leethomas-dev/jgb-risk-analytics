@@ -109,7 +109,7 @@ real run, not only inside the automated tests.
 
 ## 2. The sanity check: does summed KRD match overall duration?
 
-A real run against the live MOF curve:
+A real run against the committed snapshot curve (MOF, 2026-08-31; `prefer_live=False`, so reproducible offline):
 
 | Bond | sum(KRD) | overall duration | gap |
 | --- | --- | --- | --- |

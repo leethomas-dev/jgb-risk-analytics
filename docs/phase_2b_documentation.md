@@ -107,7 +107,8 @@ go wrong: an **analytic check** against the textbook bond-price formula
 **flat-extrapolation check**, including one that proves a straight-line
 continuation would have given a meaningfully different (and wrong) answer
 — so the test can't pass by accident; and a **genuine cross-check across
-both real data-source shapes** (the 12-point and 15-point curve grids),
+every curve grid shape** (the 15-point MOF grid, as the snapshot and
+as a live-shaped fixture, plus a 12-point fixture with sub-year bills),
 each verified against an independently computed expected price, not just
 "it ran without an error."
 

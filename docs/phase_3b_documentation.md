@@ -112,7 +112,7 @@ averaged) rate move internally, while the reference uses a genuine
 one-sided move, so the two are independent calculations, not the same
 number computed twice.
 
-A real run against the live MOF curve:
+A real run against the committed snapshot curve (MOF, 2026-08-31; `prefer_live=False`, so reproducible offline):
 
 | Bond | formula | direct reprice | gap |
 | --- | --- | --- | --- |

@@ -272,9 +272,11 @@ is a different question, and it's what §5's coupon-effect check measures
 instead. The passing self-consistency test above should not be read as
 validation of the par-curve assumption itself.
 
-`tests/test_bootstrap.py` runs the self-consistency check against both
-real grid shapes (the 12-point snapshot and a 15-point live/cache-shaped
-fixture, `prefer_live=False` for determinism) with an explicit `abs=1e-6`
+`tests/test_bootstrap.py` runs the self-consistency check against the
+15-point snapshot (`prefer_live=False` for determinism), a second
+15-point live-shaped fixture, and a 12-point fixture with sub-year bills
+(the snapshot's pre-2026-09-27 grid, kept so the money-market path stays
+tested) with an explicit `abs=1e-6`
 tolerance — tighter than needed by several orders of magnitude,
 deliberately, so a real bootstrap bug would fail it clearly.
 
@@ -330,30 +332,41 @@ direction, purely from the coupon effect, holding the curve shape fixed.
 
 | Tenor | Input rate | Zero-coupon YTM | Gap | High-coupon (2×) YTM | Gap |
 | --- | --- | --- | --- | --- | --- |
-| 1Y | 1.1200% | 1.1206% | +0.06bp | 1.1194% | -0.06bp |
-| 2Y | 1.4000% | 1.4026% | +0.26bp | 1.3975% | -0.25bp |
-| 3Y | 1.6000% | 1.6054% | +0.54bp | 1.5949% | -0.51bp |
-| 5Y | 1.8200% | 1.8304% | +1.04bp | 1.8106% | -0.94bp |
-| 7Y | 2.1900% | 2.2211% | +3.11bp | 2.1635% | -2.65bp |
-| 10Y | 2.4000% | 2.4441% | +4.41bp | 2.3655% | -3.45bp |
-| **20Y** | 3.3200% | 3.5840% | **+26.40bp** | 3.1829% | **-13.71bp** |
-| **30Y** | 3.7300% | 4.2084% | **+47.84bp** | 3.5677% | **-16.23bp** |
-| **40Y** | 3.9100% | 4.5382% | **+62.82bp** | 3.7677% | **-14.23bp** |
+| 1Y | 1.5020% | 1.5020% | +0.00bp | 1.5020% | +0.00bp |
+| 2Y | 1.7430% | 1.7454% | +0.24bp | 1.7407% | -0.23bp |
+| 3Y | 1.8940% | 1.8987% | +0.47bp | 1.8896% | -0.44bp |
+| 4Y | 2.0840% | 2.0941% | +1.01bp | 2.0747% | -0.93bp |
+| 5Y | 2.2330% | 2.2487% | +1.57bp | 2.2191% | -1.39bp |
+| 6Y | 2.3580% | 2.3797% | +2.17bp | 2.3393% | -1.87bp |
+| 7Y | 2.5070% | 2.5388% | +3.18bp | 2.4805% | -2.65bp |
+| 8Y | 2.6700% | 2.7164% | +4.64bp | 2.6328% | -3.72bp |
+| 9Y | 2.8010% | 2.8608% | +5.98bp | 2.7548% | -4.62bp |
+| 10Y | 2.9430% | 3.0211% | +7.81bp | 2.8851% | -5.79bp |
+| 15Y | 3.5010% | 3.6919% | +19.09bp | 3.3876% | -11.34bp |
+| **20Y** | 3.8150% | 4.1035% | **+28.85bp** | 3.6776% | **-13.74bp** |
+| **25Y** | 4.1020% | 4.5518% | **+44.98bp** | 3.9347% | **-16.73bp** |
+| **30Y** | 4.0920% | 4.4562% | **+36.42bp** | 3.9762% | **-11.58bp** |
+| **40Y** | 4.0940% | 4.3698% | **+27.58bp** | 4.0302% | **-6.38bp** |
+
+(Snapshot: MOF curve for 2026-08-31. The 1Y gap is exactly zero: with
+no sub-year points, the 0.5Y rate is flat-extrapolated from 1Y, so the
+curve is flat over the first year — and a flat curve has no coupon
+effect, §4.)
 
 **Reading this, per the phase brief's expectation:** the gap is a
-fraction of a basis point out to 5Y, single digits out to 10Y, and jumps
-sharply in the **ultra-long segment (20Y–40Y)** — 26 to 63bp for the
+fraction of a basis point out to 3Y, single digits out to 10Y, and jumps
+sharply in the **ultra-long segment (20Y–40Y)** — 28 to 45bp for the
 zero-coupon scenario — exactly the maturities this project's portfolio is
 most concentrated in (`docs/phase_3c_documentation.md`'s ~51% ultra-long
 DV01 share). This matches the expected mechanism directly: the gap grows
-with maturity (more time for cash-flow timing to matter) and with curve
-steepness/curvature (the snapshot curve's steepest segment is exactly
-10Y→20Y, `docs/phase_1_documentation.md`'s own curve). The gap is also
-asymmetric and non-monotonic past 20Y (peaking at 30Y, easing slightly by
-40Y) — a real, curve-shape-dependent feature, not a bug: it tracks the
-snapshot curve's own long-end flattening (`docs/phase_1_documentation.md`
-§1.6 notes this kind of long-end behavior is a known, real JGB feature),
-not an artifact of this check.
+with maturity (more time for cash-flow timing to matter) and with how
+much the curve rises beyond a bond's earlier coupons (this curve climbs
+~116bp from 10Y to 25Y). The gap is non-monotonic past 20Y (peaking at
+25Y, easing through 40Y) — a real, curve-shape-dependent feature, not a
+bug: the curve is flat from 25Y to 40Y (4.10%, 4.09%, 4.09%), so the
+longest bonds' late cash flows gain little extra yield over their
+earlier ones (`docs/phase_1_documentation.md` §1.6 notes this kind of
+long-end behavior is a known, real JGB feature).
 
 **Direction matches theory:** on this upward-sloping curve, the
 zero-coupon (low-coupon) scenario's YTM sits *above* the input rate at
