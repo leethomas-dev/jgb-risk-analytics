@@ -33,6 +33,23 @@ Special phases are cross-cutting changes made between numbered phases.
 Earlier docs keep the figures that were true when they were written and
 point to the special phase that changed them.
 
+## Changes to earlier phases
+
+Commits that revised a phase after it was first built, oldest first. The
+phase docs describe each phase as it stands; this list says what changed
+later and where it's recorded. `git show <commit>` is the full detail.
+
+| Date | Commit | Phases affected | What changed | Recorded in |
+| --- | --- | --- | --- | --- |
+| 2026-09-01 | `a17b477` | 1, 2A, 2B, 3A | Plain-English summary added to the top of each doc | Those docs |
+| 2026-09-04 | `3ff2dbb` | 1, 2A, 2B, 3A–3C | Docs and docstrings condensed (per its commit message, no intended behaviour change) | — |
+| 2026-09-06 | `cc5aa50` | 4A | History loader logs duplicate MOF dates (code and tests only); rejected pairwise/EM ragged-tenor alternatives documented | `phase_4a` §1.3 |
+| 2026-09-11 | `5c2fc62` | 4.7 | Dashboard layout and styling; `DESIGN.md` added | `phase_4_7`, `DESIGN.md` |
+| 2026-09-11 | `0837d04` | 2A | `issue_date` / `maturity_date` accept unambiguous non-ISO formats (`YYYY/MM/DD`, spelled-out months, Japanese numeric and era dates), stored as ISO; ambiguous `DD/MM` / `MM/DD` rejected | `phase_2a` §2 |
+| 2026-09-13 | `7dfbe52` | 2A, 2B, 3A–3C, 4C, 4.5C, 4.6B–C | `Bond.freq` added (default 2); every pricing and risk function prices each bond at its own frequency, with an explicit `freq` override kept (4.5C needs one shared frequency) | `phase_2a` §2.1, `phase_2b` §1.3 |
+| 2026-09-27 | `72e438e` | 1 (figures in 3A–3C, 4C, 4.5A–C, 4.6B–C) | Phase 1 snapshot replaced by MOF's 15-tenor curve for 2026-08-31 (the old 12-tenor curve kept as a test fixture); affected doc figures re-baselined in place; Nelson-Siegel now fails to converge on the snapshot | `phase_1` §1.2 |
+| 2026-09-27 | `b410761` | 2B–4.7 | **Special Phase A:** zero-curve discounting as the default basis, par-vs-zero factor monitor. Earlier docs keep their par figures plus a header note | `special_phase_a` §5A |
+
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded
 data live in that phase's own doc, not restated here.

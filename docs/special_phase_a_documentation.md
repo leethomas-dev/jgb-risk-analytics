@@ -242,6 +242,46 @@ par shifts most.
 
 ---
 
+## 5A. Changes by phase
+
+Everything commit `b410761` changed, grouped by the phase that first built
+it. Phases not listed with a change were not touched. The Phase 1 snapshot
+refresh (15-tenor MOF curve for 2026-08-31) is a **separate, earlier
+commit**, `72e438e` — not part of this phase.
+
+| Phase | Code changed | Behaviour / numbers | Details |
+| --- | --- | --- | --- |
+| 1 — curve loader | None | None | — |
+| 2A — portfolio | None | None | — |
+| 2B — pricing | `bond_pricing.py`: `basis` argument on `discount_factors_at`, `price_bond`, `price_portfolio`; constants `PAR_BASIS` / `ZERO_BASIS` / `DEFAULT_BASIS = "zero"`; `zero_curve_for()` (cached bootstrap per curve and frequency); `"par"` on a `zero_rate` curve now raises | Prices discount on the bootstrapped zero curve; long bonds cheaper (portfolio 94.8836 → 93.0471). Old formula still available as `basis="par"` | §3, §6.1–6.2 |
+| 3A — KRD | `key_rate_duration.py`: `key_rate_duration_bond`, `effective_duration_bond`, `key_rate_duration_portfolio` forward `basis`; docstring note on the zero-basis bump | A bump now means bump par → re-bootstrap → reprice. Risk sits at maturity tenors; small negative KRDs between; Σ KRD still = effective duration. Portfolio duration 10.197 → 10.666 | §5, §6.3 |
+| 3B — DV01 | `dv01.py`: `dv01_bond`, `dv01_by_tenor_bond`, `dv01_portfolio`, `dv01_by_tenor_portfolio` forward `basis` | Portfolio DV01 0.096267 → 0.097494 | §6.1–6.2 |
+| 3C — ultra-long | `ultra_long_profile.py`: `compute_ultra_long_profile` forwards `basis` | 20Y+ share of risk 51% → 68% | §5, §6.1 |
+| 4A — history loader | None | None (loads curves, prices nothing) | — |
+| 4B — PCA | None | None | — |
+| 4C — factor exposure | `factor_exposure.py`: `compute_portfolio_factor_exposure` forwards `basis`; **new** `compare_factor_exposure_bases()` | PC2 exposure nearly doubles, PC3 flips sign; "40Y folds exactly into 30Y" now par-only; linear-vs-exact gap ≤ 0.007pp. Alignment logic unchanged | §1, §5, §6.4, §7 |
+| 4D — attribution | `factor_pnl_attribution.py`: `compute_factor_pnl_attribution` forwards `basis` to exposures and both reprices | Attributed P&L and residual change (one-day residual −0.0138 → −0.0107) | §6.4 |
+| 4E — history top-up | None | None | — |
+| 4.5A — bootstrap | `bootstrap.py`: `implied_ytm` pinned to `basis="par"` (a flat-yield definition) | None — `bootstrap_zero_curve` is unchanged and is now the engine behind the default | §3.1 |
+| 4.5B, 4.5B-DL — curve fits | None | None (fit the zero curve, price nothing) | — |
+| 4.5C — zero-curve option | `zero_curve_impact.py`: par side pinned to `basis="par"`. Doc: header note, new §2.1 (corrected benchmark), §5.1 marked superseded, new §5.5 | Its own numbers unchanged; its −4.72% reinterpreted as zero-rate risk, not par-factor risk | §1 |
+| 4.6A — clean / dirty | `bond_pricing.py`: `dirty_price`, `dirty_price_portfolio` forward `basis` | Clean (and so dirty) price moves; accrued interest unchanged | §6.2 |
+| 4.6B — YTM / duration | `bond_analytics.py`: YTM, modified duration, convexity and the Taylor check pinned to `basis="par"`; `bond_analytics_portfolio` forwards `basis` to price and effective duration | YTMs rise (prices lower); modified-vs-effective gap now peaks at 20Y (5.1%) | §5, §6.2 |
+| 4.6C — cash flow ladder | `cash_flow_ladder.py`: `_bond_cash_flows`, `compute_cash_flow_ladder` forward `basis` | Total PV 94.8836 → 93.0471; PV share ≥20Y 19.0% → 17.8% | §6.1 |
+| 4.7 — dashboard | `app.py`: module docstring; captions in section 2 (prices discount on the zero curve), section 3 (which duration is which), section 4 (explains negative KRD bars). No logic change | Every displayed figure is zero-basis | §5 |
+
+**Tests** (374 → 386): moved to `basis="par"` — flat extrapolation, the
+three grid-shape prices, par-vs-zero price difference, the KRD tent's
+concentration and endpoint tests, Phase 4.6B's duration-gap test. Renamed
+— the 4C "40Y folds into 30Y" test split into a both-bases total check and
+a par-only exact check. New — 12 tests listed in §4.
+
+**Docs:** header note added to 2B, 3A, 3B, 3C, 4C, 4D, 4.6A, 4.6B, 4.6C,
+4.7 (3C and 4C also state their headline change); 4.5C as above;
+`docs/README.md` index row.
+
+---
+
 ## 6. Before / after
 
 Committed data (`prefer_live=False`: curve snapshot 2026-08-31, PCA
@@ -403,3 +443,20 @@ rate-limited during the research.
   figures with a pointer here.
 - **Fallback re-anchoring policy** (`docs/phase_1_documentation.md` §5):
   no new hardcoded data.
+
+---
+
+## 12. Reproducing and reconstructing this phase
+
+- **The change itself:** `git show b410761` (28 files). §5A lists every
+  change by phase; the diff is the authority if the two ever disagree.
+- **Not part of this phase:** `git show 72e438e` — the Phase 1 snapshot
+  refresh the day before, which moved the committed curve to MOF's
+  15-tenor 2026-08-31 curve. Every number in this doc is on that snapshot.
+- **The §6 figures and §7 monitor:** `python -m validation.special_phase_a_before_after`
+  from the repo root. It prices everything on both bases from the committed
+  data, so the output is identical on any machine.
+- **Par-basis figures for any single phase:** call its function with
+  `basis="par"` (every pricing and risk function accepts it).
+- **All changes to earlier phases**, not just this one: the changelog in
+  `docs/README.md`.
