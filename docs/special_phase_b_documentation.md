@@ -27,6 +27,11 @@ Done so far:
    not: up to ~32bp of yield (~3 points of price) at 25Y. Bonds like the
    project's own portfolio are off by 5bp or less. The 25Y "peak" in
    MOF's curve turns out to come from those low-coupon bonds.
+4. **The par error barely changes the factor results.** Correcting the
+   curve history for it moves the slope factor's P&L by ~8% and changes
+   daily factor P&L by ~2% of a typical day's P&L — under every limit set
+   before the test. Most of the change comes through the factors
+   themselves, not through the curve's level.
 
 ---
 
@@ -37,11 +42,13 @@ Done so far:
 `models/curve_fitting.py` (`leave_one_tenor_out()`),
 `data/jsda_reference_loader.py` (`load_jsda_jgbs()`, new),
 `models/par_error_check.py` (`measure_par_error()`,
-`mof_selected_issues()`, new).
+`mof_selected_issues()`, new), `models/par_error_factor_impact.py`
+(`coupon_corrected_curve()`, `compare_factor_results()`, new).
 
-**Tests:** 386 → 401, all passing (4 in `tests/test_pca.py`, 3 in
+**Tests:** 386 → 406, all passing (4 in `tests/test_pca.py`, 3 in
 `tests/test_curve_fitting.py`, 8 in `tests/test_par_error_check.py` — one
-of which needs the hand-downloaded JSDA file and is skipped without it).
+of which needs the hand-downloaded JSDA file and is skipped without it —
+and 5 in `tests/test_par_error_factor_impact.py`).
 
 ---
 
@@ -290,3 +297,133 @@ about half the size.
 - JSDA quotes are dealer reference prices, not trades.
 - The class mapping and selection rule follow MOF's published outline;
   MOF's exact issue choice on the day isn't published.
+
+---
+
+## 4. Does the par error change the factor results?
+
+### 4.1 Why the obvious test proves nothing
+
+PCA runs on daily changes in yields. Adding the same bias to every day
+cancels out of every change exactly, so that test would "pass" by
+construction. The real error isn't fixed: it's the coupon effect of the
+bonds MOF uses, and it changes with each day's curve.
+
+### 4.2 The test
+
+`coupon_corrected_history()` builds a corrected copy of the 2-year curve
+history:
+
+1. At each grid year MOF builds from **older** issues (1, 3, 4, 6–9, 15,
+   25Y), MOF's yield is taken to be the yield of a bond with those
+   issues' average coupon (from §3.4: e.g. 0.45% at 15Y, 0.70% at 25Y).
+2. For each day, the par yield there is adjusted until that bond, priced
+   on the re-bootstrapped zero curve, yields exactly MOF's number (to
+   0.01bp; checked against `models.bootstrap.implied_ytm`).
+3. Grid years built from each class's **newest** issue (2, 5, 10, 20, 30,
+   40Y) are treated as par and left alone.
+
+PCA, factor exposure (4C) and daily factor P&L (4D) are then re-run on
+the corrected history and compared with the originals.
+
+**Is the correction realistic?** On 2026-08-31 it lowers 15Y by 13bp and
+25Y by 22bp, and the corrected curve prices the 294 real JGBs from §3
+better: mean gap 6.5 → 3.5bp, median 2.0 → 1.2bp. It's a partial fix:
+bonds maturing in 30–40Y price slightly worse (mean +19.9 → +24.3bp), and
+the largest single gap grows (35.5 → 42.3bp). Good enough as a test
+input of the right size and shape. It isn't a replacement curve.
+
+### 4.3 Limits set before running
+
+The error counts as **material** for factor results if any of these is
+exceeded (`MATERIAL_*` constants):
+
+| Check | Limit |
+| --- | --- |
+| Loading shape (cosine similarity, original vs corrected) | below 0.99 |
+| A factor's share of variance | moves by more than 2 points |
+| A factor's +1 std P&L (4C exposure) | moves by more than 10% |
+| Daily factor P&L (4D), median change | more than 10% of the median daily P&L |
+
+### 4.4 Result (2-year window, 2024-09-02 to 2026-08-31, 485 days)
+
+**The correction itself moves a lot over the window:** 3–14bp at 15Y and
+6.5–23bp at 25Y, growing as yields rose and the old bonds fell further
+below par. Its daily change is small, though (0.45bp standard deviation
+at 25Y vs. 3.4bp for the yield itself), and moves with the yield
+(correlation 0.8).
+
+| Check | Result | Limit |
+| --- | --- | --- |
+| Loading cosine, PC1 / PC2 / PC3 | 0.9997 / 0.9973 / 0.9982 | ≥ 0.99 |
+| Variance share, PC1 / PC2 / PC3 | 75.3→75.7% / 20.5→20.2% / 1.67→1.69% | ±2 points |
+| +1 std P&L, PC1 | −0.2766 → −0.2761 (−0.2%) | ±10% |
+| +1 std P&L, PC2 | −0.0986 → −0.1064 (**+7.9%**) | ±10% |
+| +1 std P&L, PC3 | −0.0099 → −0.0090 (−8.4%) | ±10% |
+| Daily P&L change, PC1 / PC2 / PC3 | 2.1% / 2.4% / 0.3% of median daily P&L | 10% |
+
+**Not material by any of the four limits.** The closest is the slope
+factor's (PC2) exposure at +7.9%. PC3's −8.4% is a large share of a very
+small number (under 0.01 per 100 face).
+
+### 4.5 Which channel the change comes through
+
+Splitting the exposure change by what was corrected:
+
+| | PCA only corrected | Today's curve only corrected | Both |
+| --- | --- | --- | --- |
+| PC1 | −0.7% | +0.5% | −0.2% |
+| PC2 | +6.9% | +1.0% | +7.9% |
+| PC3 | −9.8% | +1.4% | −8.4% |
+
+**This is the opposite of what was expected.** The working assumption
+was that change-based results (the PCA) would be safe, because a
+steady error cancels out of daily changes, and that level-based results
+(repricing the portfolio) would carry the error. Here the level channel
+is small (≤1.4%): the portfolio's bonds are near par and mature at grid
+years built from new issues, so a curve error at 15Y and 25Y barely
+touches them. The PCA channel is larger, because the correction isn't
+steady — it moves with the yields, so it changes how much 15Y and 25Y
+move in each factor. For Phase 5, which uses the factors, the PCA
+channel is the one to watch.
+
+### 4.6 A first run, discarded — and why
+
+The first run of this test held every grid year's coupon fixed at its
+2026-08-31 value, including the newest issues (3.7–4.0% at 20Y, 30Y and
+40Y). It showed PC2 exposure **+11.4%**, over the 10% limit.
+
+That run was wrong for a reason found in its own output, not because of
+the result: it applied an average correction of about **−5bp** at 20Y,
+30Y and 40Y. Those grid years are built from new issues, which trade
+near par whenever they're the newest. Holding a 2026 coupon fixed back
+to 2024, when yields were far lower, made them look like premium bonds
+and invented a correction that never existed. The fix treats those grid
+years as par.
+
+The first run also stopped its correction after a fixed six steps,
+which left it up to 0.6bp short. The final version runs until every
+bond is within 0.01bp. That moved the exposure results by about 0.1
+percentage points (PC2: +7.8% → +7.9%).
+
+Both changes were made after seeing a result over the limit. The
+reasoning for the first stands on its own (§4.2 step 3), but a reviewer
+should know the order things happened in.
+
+### 4.7 Limitations
+
+- **Smooth part only.** MOF switches to a different issue at each grid
+  year every few months, and its 15Y/25Y yields can jump on those days.
+  The jumps aren't modelled; on those days they add movement at 15Y and
+  25Y that this test doesn't include.
+- **Older-issue coupons held fixed** at their 2026-08-31 values for the
+  whole window. The issues MOF used near 25Y in 2024 were different ones,
+  with similar low coupons (well under 1%), but not the same.
+- **One portfolio.** A portfolio holding old low-coupon bonds, or bonds
+  maturing near 15Y or 25Y, would see a larger level-channel effect
+  (§3.5).
+- **The limits are judgement calls.** They were set before running,
+  but other reasonable limits (5% on exposure, say) would flag PC2.
+
+Reproduce with `python -m models.par_error_factor_impact` (about two
+minutes; committed data).
