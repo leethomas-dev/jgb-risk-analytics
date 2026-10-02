@@ -1,9 +1,13 @@
 # Phase 4.5B (Diebold-Li) Documentation — `models/diebold_li.py`
 
-> **Special Phase B (2026-10-02):** the §4 comparison mixes bases
-> (Diebold-Li on the zero curve, PCA on par-treated yields), which may
-> partly explain the weak level correlation (0.269). Recorded, not fixed —
-> see [`future_curve_construction.md`](future_curve_construction.md) §5.
+> **Special Phase B (2026-10-02).** §3 explains the April–August 2026
+> poor fits as "a genuine curve regime… not a data problem" — a hump into
+> 25Y. MOF's 25Y point is built from old 0.7%-coupon bonds and sits
+> ~19–22bp above a par yield over exactly that period, so the
+> data-artifact explanation has to be considered first. Separately, §4
+> mixes bases (Diebold-Li on the zero curve, PCA on par-treated yields),
+> which may partly explain the weak level correlation (0.269). See
+> [`future_curve_construction.md`](future_curve_construction.md) §2, §10.
 
 This is a Phase 4.5B addition (it extends `models/curve_fitting.py`'s
 Nelson-Siegel/Svensson fitting — see §1), not a Phase 4B one, even though

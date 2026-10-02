@@ -1,12 +1,16 @@
 # Phase 4.5B Documentation — `models/curve_fitting.py`
 
-> **Special Phase B (2026-10-02):** Svensson almost nests Nelson-Siegel
-> (`beta3 = 0`), so its lower in-sample RMSE in §6 is close to guaranteed
-> and proves little. A leave-one-tenor-out test on the 15 real MOF tenors
-> shows Svensson interpolates the belly better but only modestly (8.45 vs.
-> 7.05bp interior RMSE), misses 40Y by ~99bp when extrapolating, and that
-> neither model predicts 25Y — see
-> [`special_phase_b_documentation.md`](special_phase_b_documentation.md) §2.
+> **Special Phase B (2026-10-02) — read before §6–8.** The 25Y miss in
+> §7 (+14 to +19bp) is mostly a **data artifact in MOF's curve**, not a
+> model failure: MOF builds its 25Y point from 30Y-class bonds issued
+> years ago with 0.7% coupons, trading near 47, which yield ~32bp more
+> than par bonds would; 20Y and 30Y come from near-par issues. 15Y has
+> the same issue (~16bp). Don't read 15Y or 25Y residuals as rich/cheap
+> signals. Also: Svensson almost nests Nelson-Siegel, so its lower
+> in-sample RMSE (§6) proves little; out of sample it wins modestly in
+> the belly and misses 40Y by ~99bp when extrapolating. See
+> [`future_curve_construction.md`](future_curve_construction.md) §2 and
+> [`special_phase_b_documentation.md`](special_phase_b_documentation.md) §2–3.
 
 **Related, added later:** `models/diebold_li.py` extends this phase's
 cross-sectional Nelson-Siegel/Svensson fitting with Diebold & Li's (2006)

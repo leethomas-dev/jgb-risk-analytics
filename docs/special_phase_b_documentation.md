@@ -20,16 +20,19 @@ simplification actually matters. What it did:
    saw.** Svensson still predicts the middle of the curve better, but
    much less decisively than the in-sample numbers suggested, and it
    extrapolates badly at 40Y.
-3. **The par error was measured against real bond prices.** Bonds priced
-   near 100 are priced correctly (under 1bp). Old low-coupon bonds are
-   not: up to ~32bp of yield (~3 points of price) at 25Y. Bonds like the
-   project's own portfolio are off by 5bp or less. The 25Y "peak" in
-   MOF's curve turns out to come from those low-coupon bonds.
-4. **The par error changes the factor results only modestly.** Correcting the
-   curve history for it moves the slope factor's P&L by ~8% and changes
-   daily factor P&L by ~2% of a typical day's P&L — under every limit set
-   before the test. Most of the change comes through the factors
-   themselves, not through the curve's level.
+3. **MOF's curve has built-in distortions at 15Y and 25Y.** Checked
+   against real bond prices, those two points are built from old bonds
+   with coupons under 1%, while their neighbours come from new near-par
+   ones — putting 25Y about 32bp and 15Y about 16bp above where par
+   bonds would sit. The 25Y "peak" that 4.5B's models failed to fit is
+   mostly this artifact. Bonds priced near 100 are priced correctly
+   (under 1bp); **bonds like the project's own portfolio are off by only
+   −2 to +5bp, mostly under 2bp.**
+4. **The par error reaches the factors, not mainly the prices.**
+   Correcting the curve history moves the slope factor's P&L by 7.9%
+   against a 10% limit, with a known gap in the test that pushes the
+   same way. It was expected to show up through the curve's level and
+   spare the factors; it did the opposite.
 
 ---
 
@@ -363,11 +366,14 @@ at 25Y vs. 3.4bp for the yield itself), and moves with the yield
 | +1 std P&L, PC3 | −0.0099 → −0.0090 (−8.4%) | ±10% |
 | Daily P&L change, PC1 / PC2 / PC3 | 2.1% / 2.4% / 0.3% of median daily P&L | 10% |
 
-**Not material by any of the four limits.** The closest is the slope
-factor's (PC2) exposure at +7.9%. PC3's −8.4% is a large share of a very
+**PC2 (slope): 7.9% measured, with a known omission that pushes the same
+way.** None of the four limits is exceeded, but the test leaves out the
+jumps at 15Y and 25Y when MOF switches issues (§4.7); correcting those
+would change the history further at the same two tenors, so it would
+very likely move PC2 further. PC3's −8.4% is a large share of a very
 small number (under 0.01 per 100 face).
 
-### 4.5 Which channel the change comes through
+### 4.5 Finding: the channel expected to be safe was the exposed one
 
 Splitting the exposure change by what was corrected:
 
