@@ -22,6 +22,11 @@ Done so far:
    saw.** Svensson still predicts the middle of the curve better, but
    much less decisively than the in-sample numbers suggested, and it
    extrapolates badly at 40Y.
+3. **The par error was measured against real bond prices.** Bonds priced
+   near 100 are priced correctly (under 1bp). Old low-coupon bonds are
+   not: up to ~32bp of yield (~3 points of price) at 25Y. Bonds like the
+   project's own portfolio are off by 5bp or less. The 25Y "peak" in
+   MOF's curve turns out to come from those low-coupon bonds.
 
 ---
 
@@ -29,10 +34,14 @@ Done so far:
 
 **Files:** `models/pca.py` (`describe_level_shape()`,
 `PARALLEL_SHIFT_MAX_RATIO`), `app.py` (sections 5 and 7 captions),
-`models/curve_fitting.py` (`leave_one_tenor_out()`).
+`models/curve_fitting.py` (`leave_one_tenor_out()`),
+`data/jsda_reference_loader.py` (`load_jsda_jgbs()`, new),
+`models/par_error_check.py` (`measure_par_error()`,
+`mof_selected_issues()`, new).
 
-**Tests:** 386 → 393, all passing (4 in `tests/test_pca.py`, 3 in
-`tests/test_curve_fitting.py`).
+**Tests:** 386 → 401, all passing (4 in `tests/test_pca.py`, 3 in
+`tests/test_curve_fitting.py`, 8 in `tests/test_par_error_check.py` — one
+of which needs the hand-downloaded JSDA file and is skipped without it).
 
 ---
 
@@ -160,3 +169,124 @@ still picks Svensson, and that's the right call for describing the 1–30Y
 shape. "Svensson fits better" should be stated as "Svensson interpolates
 the belly better; neither model handles 25Y; Svensson must not be
 extrapolated."
+
+---
+
+## 3. Measuring the par error against real bond prices
+
+### 3.1 The test
+
+If the bootstrapped zero curve were right, it would price the real bonds
+MOF built its curve from at their market prices. So every fixed-coupon
+JGB maturing in 1–40Y (294 bonds) is priced off the zero curve for
+2026-08-31, using its own coupon and real coupon dates, and compared
+with JSDA's reference quote for the same day.
+
+Each gap (model yield minus market yield, in bp) is split in two:
+
+- **off-curve:** MOF's curve at the bond's maturity minus the bond's own
+  market yield. How far the bond sits from MOF's smooth curve — not
+  caused by the par assumption.
+- **coupon effect:** the rest. What treating MOF's curve as par does to a
+  bond with this coupon.
+
+Both yields come from the same yield function, so convention differences
+cancel.
+
+### 3.2 The data, and checks on it
+
+- **Source:** JSDA's daily reference prices (公社債店頭売買参考統計値),
+  `market.jsda.or.jp/shijyo/saiken/baibai/baisanchi/files/<YYYY>/S<YYMMDD>.csv`.
+  Each row has the issue, maturity, coupon, coupon months, average
+  price, and compound and simple yields.
+- **Not committed.** JSDA's terms forbid reuse or copying without
+  permission ([jsda.or.jp/menseki](https://www.jsda.or.jp/menseki/)). The
+  file is downloaded by hand into `data/jsda/` (gitignored); only derived
+  results are recorded here.
+- **Dated the next business day — confirmed.** `S260901.csv` sits 0.2bp
+  from MOF's 08-31 curve on average; `S260831.csv` sits 1.0bp from 08-31
+  but 0.4bp from 08-28. So `S260901` holds the 08-31 quotes.
+- **Column meanings checked, not assumed.** Recomputing simple yield from
+  price and coupon matches JSDA's column to 0.09bp (median). This code's
+  compound yield matches JSDA's to 0.19bp (median, 0.36bp at the 95th
+  percentile), so the price-to-yield conventions agree.
+- **Prices, not simple yields, are used.** JSDA's headline figure for
+  ordinary JGBs is the simple yield, but the file also carries the
+  average price; the check works from the price directly.
+- **Settlement:** T+1 (2026-09-01); accrued interest on Actual/365.
+
+### 3.3 Result
+
+**MOF's curve fits the bonds closely** (off-curve gap 0.85bp median), so
+almost all of the gap is the coupon effect.
+
+| Maturity | Bonds | Avg coupon effect | Range | Avg price gap (per 100) |
+| --- | --- | --- | --- | --- |
+| 1–3Y | 56 | +0.1bp | 0.0 to +0.4bp | −0.01 |
+| 3–5Y | 45 | +0.3bp | −0.4 to +1.4bp | 0.00 |
+| 5–10Y | 66 | +1.5bp | −0.1 to +6.9bp | −0.13 |
+| 10–15Y | 31 | +7.8bp | +1.1 to +15.8bp | −0.52 |
+| 15–20Y | 37 | +10.8bp | +0.6 to +25.1bp | −1.01 |
+| 20–25Y | 24 | +24.7bp | +9.2 to +33.0bp | −2.46 |
+| 25–30Y | 25 | +16.4bp | +0.4 to +32.4bp | −1.38 |
+| 30–40Y | 10 | +16.0bp | +0.8 to +25.7bp | −2.03 |
+
+**The coupon drives it.** Within every maturity bucket, the coupon effect
+tracks how far the coupon sits below the yield (correlation −0.79 to
+−0.97; −0.93 or stronger beyond 10Y). The 66 bonds priced 98–102 are all
+within 0.55bp. The 111 bonds priced below 85 have a median gap of
++13.8bp. A positive gap means the zero curve makes the bond yield too
+much — prices it too cheaply.
+
+### 3.4 The bonds MOF's curve is built from
+
+Using MOF's own selection rule (newest issue in the class, plus the
+issues maturing nearest each grid year):
+
+| Grid | Bonds MOF uses | Their price | Gap |
+| --- | --- | --- | --- |
+| 1–5Y | 2Y/5Y issues | 96–100 | −0.4 to +2.0bp |
+| 6–9Y | 10Y class, older issues | ~87–91 | +2.3 to +3.2bp |
+| 10Y | newest 10Y | ~98 | +0.8bp |
+| **15Y** | 20Y class, older issues | **~65** | **+15.8bp** |
+| 20Y | newest 20Y | ~99 | +1.0bp |
+| **25Y** | 30Y class, older issues | **~47** | **+32.3 to +32.5bp** |
+| 30Y | newest 30Y | ~98 | −0.2bp |
+| 40Y | newest 40Y | ~94 | +0.2bp |
+
+**This explains the 25Y kink.** MOF's 25Y point is the yield of 30Y-class
+bonds issued years ago with coupons under 1%, trading near 47. On a
+rising curve, such a bond yields more than a par bond of the same
+maturity. The 20Y, 30Y and 40Y points come from new, near-par bonds. So
+MOF's curve peaks at 25Y (4.10%, above 30Y's 4.09%) partly because it
+switches between low-coupon and par bonds — the kink both Nelson-Siegel
+and Svensson miss by ~23bp (§2.3). The 15Y point has the same issue at
+about half the size.
+
+### 3.5 What this means for the project's numbers
+
+- **The project's own portfolio is barely affected.** Its bonds (2–40Y,
+  coupons 1.0–3.8%) sit near par and mature at grid years built from new
+  issues. Real JGBs with similar coupons and maturities show gaps of
+  −2.0 to +4.7bp, most under 2bp.
+- **The zero curve's shape is wrong around 15Y and 25Y.** For a deep-
+  discount bond, most of the value is the final payment, so a ~3-point
+  price gap on a 25Y bond priced ~47 means the zero rate there is roughly
+  25bp too high (≈ 6.6% too little value ÷ 25 years). About 15bp at 15Y.
+  This is a rough reading, not a fitted correction.
+- **A real-bond portfolio would be affected** (Phase 8): old low-coupon
+  issues would be mispriced by up to ~3 points per 100.
+- **Factor results are not tested here.** PCA runs on MOF's yields, not
+  the zero curve. Whether the 15Y/25Y distortion moves day to day enough
+  to affect factors is item 4's question.
+
+**Limitations.**
+
+- One day only (2026-08-31).
+- Some of the low-coupon gap may be real market pricing — for example,
+  different demand for low-coupon bonds — that even a curve fitted to
+  bond prices would leave in. Separating the two needs that fitted
+  curve.
+- JSDA quotes are dealer reference prices, not trades.
+- The class mapping and selection rule follow MOF's published outline;
+  MOF's exact issue choice on the day isn't published.

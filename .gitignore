@@ -239,3 +239,7 @@ data/._jgb_history_meta_*.tmp
 # used to top up the history until MOF's monthly historical file catches up.
 data/_jgb_curve_recent_cache.csv
 data/._jgb_recent_cache_*.tmp
+
+# Project-specific: JSDA reference-price files, downloaded by hand. JSDA's terms
+# forbid redistribution, so these are never committed (data/jsda_reference_loader.py).
+data/jsda/
