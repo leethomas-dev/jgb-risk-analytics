@@ -11,9 +11,7 @@ that, but it was deliberately put off (see
 decision and the remediation path). This phase does the cheaper, honest
 thing instead: it corrects claims the project was making too strongly,
 checks a model comparison properly, and measures how much the par
-simplification actually matters.
-
-Done so far:
+simplification actually matters. What it did:
 
 1. **The dashboard no longer calls PC1 a parallel shift.** It now
    describes PC1 from its real loadings, e.g. "every tenor moves the same
@@ -27,7 +25,7 @@ Done so far:
    not: up to ~32bp of yield (~3 points of price) at 25Y. Bonds like the
    project's own portfolio are off by 5bp or less. The 25Y "peak" in
    MOF's curve turns out to come from those low-coupon bonds.
-4. **The par error barely changes the factor results.** Correcting the
+4. **The par error changes the factor results only modestly.** Correcting the
    curve history for it moves the slope factor's P&L by ~8% and changes
    daily factor P&L by ~2% of a typical day's P&L — under every limit set
    before the test. Most of the change comes through the factors
@@ -36,6 +34,9 @@ Done so far:
 ---
 
 ## Technical details
+
+**Docs:** header notes added to 4B, 4.5A, 4.5B, 4.5B-DL, 4C, 4D and 4.7;
+decision record `future_curve_construction.md` added.
 
 **Files:** `models/pca.py` (`describe_level_shape()`,
 `PARALLEL_SHIFT_MAX_RATIO`), `app.py` (sections 5 and 7 captions),

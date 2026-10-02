@@ -1,5 +1,10 @@
 # Phase 4.5A Documentation — `models/bootstrap.py`
 
+> **Special Phase B (2026-10-02):** the par-curve error bounded in §5 has
+> now been measured against real JGB prices: near-par bonds are priced
+> within 0.55bp, old low-coupon bonds up to ~32bp off (mostly at 15Y and
+> 25Y), the project's portfolio 5bp or less. See [`future_curve_construction.md`](future_curve_construction.md).
+
 ## In plain English
 
 Every calculation in this project so far has priced a bond by looking up

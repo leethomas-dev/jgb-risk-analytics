@@ -1,5 +1,10 @@
 # Phase 4.5B (Diebold-Li) Documentation — `models/diebold_li.py`
 
+> **Special Phase B (2026-10-02):** the §4 comparison mixes bases
+> (Diebold-Li on the zero curve, PCA on par-treated yields), which may
+> partly explain the weak level correlation (0.269). Recorded, not fixed —
+> see [`future_curve_construction.md`](future_curve_construction.md) §5.
+
 This is a Phase 4.5B addition (it extends `models/curve_fitting.py`'s
 Nelson-Siegel/Svensson fitting — see §1), not a Phase 4B one, even though
 its Part 3 comparison reads Phase 4B's existing PCA output. The model

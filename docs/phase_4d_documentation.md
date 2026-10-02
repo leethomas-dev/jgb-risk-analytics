@@ -1,5 +1,11 @@
 # Phase 4D Documentation — `models/pc_scores.py` + `models/factor_pnl_attribution.py`
 
+> **Special Phase B (2026-10-02):** correcting the curve history for the
+> par-curve error moves the slope factor's (PC2) +1 std P&L by ~+8% and
+> daily factor P&L by ~2% of a typical day — within the limits set before
+> the test, but a stated uncertainty. See
+> [`special_phase_b_documentation.md`](special_phase_b_documentation.md) §4.
+
 > **Special Phase A (2026-09-27):** figures in this doc were computed on
 > the par discounting basis in force when this phase was built. The
 > project now discounts on the bootstrapped zero curve by default; current

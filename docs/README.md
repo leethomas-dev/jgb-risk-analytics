@@ -28,9 +28,13 @@ model validator can review a decision without re-deriving it from the diff.
 | 4D    | [`phase_4d_documentation.md`](phase_4d_documentation.md) | `models/pc_scores.py` — `compute_pc_scores()`, daily PCA factor scores; `models/factor_pnl_attribution.py` — `compute_factor_pnl_attribution()`, daily factor P&L attribution with a reported residual | Done   |
 | 4E    | [`phase_4e_documentation.md`](phase_4e_documentation.md) | `data/jgb_curve_history_loader.py` (extended) — `_extend_with_recent_rows()`, tops up the curve history with MOF's current-month file, cached locally across month rollovers; `app.py` (extended) — a Refresh market data button | Done   |
 | Special A | [`special_phase_a_documentation.md`](special_phase_a_documentation.md) | `models/bond_pricing.py` (`basis`, default `"zero"`) + `models/factor_exposure.py` (`compare_factor_exposure_bases()`) — every price and risk figure discounts on the bootstrapped zero curve (bump par, re-bootstrap, reprice), after the par basis was found to understate slope risk ~45%; par-vs-zero factor monitor | Done   |
-| Special B | [`special_phase_b_documentation.md`](special_phase_b_documentation.md) | `models/pca.py` (`describe_level_shape()`), `models/curve_fitting.py` (`leave_one_tenor_out()`), `models/par_error_check.py` + `data/jsda_reference_loader.py` (`measure_par_error()`), `models/par_error_factor_impact.py` (`compare_factor_results()`) — PC1 described from its loadings, not as a parallel shift; out-of-sample NS-vs-Svensson test; par-curve simplification measured against JSDA bond prices, and its effect on factor results | In progress |
+| Special B | [`special_phase_b_documentation.md`](special_phase_b_documentation.md) | `models/pca.py` (`describe_level_shape()`), `models/curve_fitting.py` (`leave_one_tenor_out()`), `models/par_error_check.py` + `data/jsda_reference_loader.py` (`measure_par_error()`), `models/par_error_factor_impact.py` (`compare_factor_results()`) — PC1 described from its loadings, not as a parallel shift; out-of-sample NS-vs-Svensson test; par-curve simplification measured against JSDA bond prices, and its effect on factor results; decision record in [`future_curve_construction.md`](future_curve_construction.md) | Done |
 
 Special phases are cross-cutting changes made between numbered phases.
+
+**Decision records:** [`future_curve_construction.md`](future_curve_construction.md)
+— why the project still treats MOF's curve as a par curve, the measured
+size of that error, and the path to building the curve from bond prices.
 Earlier docs keep the figures that were true when they were written and
 point to the special phase that changed them.
 
@@ -51,6 +55,7 @@ later and where it's recorded. `git show <commit>` is the full detail.
 | 2026-09-27 | `72e438e` | 1 (figures in 3A–3C, 4C, 4.5A–C, 4.6B–C) | Phase 1 snapshot replaced by MOF's 15-tenor curve for 2026-08-31 (the old 12-tenor curve kept as a test fixture); affected doc figures re-baselined in place; Nelson-Siegel now fails to converge on the snapshot | `phase_1` §1.2 |
 | 2026-09-27 | `b410761` | 2B–4.7 | **Special Phase A:** zero-curve discounting as the default basis, par-vs-zero factor monitor. Earlier docs keep their par figures plus a header note | `special_phase_a` §5A |
 | 2026-10-02 | `5a41358`, `a4b933a` | 4B, 4.5B, 4.7 | **Special Phase B:** PC1 caption generated from its loadings (no longer "a parallel shift"); leave-one-tenor-out NS-vs-Svensson test | `special_phase_b` §1–2 |
+| 2026-10-02 | `2c74e44`, `f219434` + this | 4.5A, 4.5B-DL, 4C, 4D | **Special Phase B:** par-curve error measured against JSDA bond prices; its effect on factor results tested; decision record added. Header notes on the affected docs | `special_phase_b` §3–4, `future_curve_construction` |
 
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded
