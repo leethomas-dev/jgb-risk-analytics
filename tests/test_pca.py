@@ -20,7 +20,7 @@ import pandas as pd
 import pytest
 
 from data.jgb_curve_history_loader import load_jgb_curve_history
-from models.pca import DEFAULT_PCA_LOOKBACK_YEARS, CurvePCAResult, compute_curve_pca
+from models.pca import DEFAULT_PCA_LOOKBACK_YEARS, CurvePCAResult, compute_curve_pca, describe_level_shape
 
 
 def _history(lookback_years=DEFAULT_PCA_LOOKBACK_YEARS) -> pd.DataFrame:
@@ -165,6 +165,35 @@ def test_pc3_shows_a_belly_vs_wings_pattern_curvature():
     mid_idx = len(pc3) // 2
     assert np.sign(pc3.iloc[0]) == np.sign(pc3.iloc[-1])  # wings agree
     assert np.sign(pc3.iloc[mid_idx]) != np.sign(pc3.iloc[0])  # belly opposes them
+
+
+# --------------------------------------------------------------------------
+# describe_level_shape (Special Phase B)
+# --------------------------------------------------------------------------
+
+
+def test_level_shape_on_the_snapshot_is_not_described_as_parallel():
+    description = describe_level_shape(compute_curve_pca(_history()).loadings.loc[1])
+    assert "parallel" not in description
+    assert "same way, but not equally" in description
+    assert "as much as 1Y" in description  # 1Y has the smallest loading (~0.08)
+
+
+def test_level_shape_reports_the_real_largest_to_smallest_ratio():
+    pc1 = pd.Series([0.1, 0.2, 0.4], index=[1.0, 10.0, 30.0])
+    assert describe_level_shape(pc1) == (
+        "every tenor moves the same way, but not equally: 30Y moves ~4.0x as much as 1Y"
+    )
+
+
+def test_level_shape_near_equal_loadings_is_called_parallel():
+    pc1 = pd.Series([0.30, 0.32, 0.34], index=[1.0, 10.0, 30.0])
+    assert "close to a parallel shift" in describe_level_shape(pc1)
+
+
+def test_level_shape_mixed_signs_says_so_rather_than_claiming_level():
+    pc1 = pd.Series([-0.1, 0.2, 0.4], index=[1.0, 10.0, 30.0])
+    assert describe_level_shape(pc1) == "tenors do not all move the same way in this window"
 
 
 def test_top_3_components_capture_the_large_majority_of_variance():

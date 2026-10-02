@@ -57,7 +57,7 @@ from models.curve_fitting import fit_nelson_siegel, fit_svensson
 from models.dv01 import dv01_portfolio
 from models.factor_exposure import compute_portfolio_factor_exposure
 from models.factor_pnl_attribution import compute_factor_pnl_attribution
-from models.pca import DEFAULT_PCA_LOOKBACK_YEARS, compute_curve_pca
+from models.pca import DEFAULT_PCA_LOOKBACK_YEARS, compute_curve_pca, describe_level_shape
 from models.pc_scores import compute_pc_scores
 from models.ultra_long_profile import NORMAL_COLOR, ULTRA_LONG_COLOR, compute_ultra_long_profile
 
@@ -670,6 +670,7 @@ st.caption(
 )
 
 exposure = compute_portfolio_factor_exposure(portfolio, curve, pca_result)
+level_shape = describe_level_shape(pca_result.loadings.loc[1])
 PC_LABELS = {1: "PC1 (often ‘level’)", 2: "PC2 (often ‘slope’)", 3: "PC3 (often ‘curvature’)"}
 
 pc_cols = st.columns(len(exposure.exposures))
@@ -698,8 +699,8 @@ fig_pca.update_layout(
 )
 st.plotly_chart(_style_fig(fig_pca), width="stretch")
 st.caption(
-    "These lines show HOW each recurring pattern moves the curve, estimated from real history: PC1 "
-    "typically moves every tenor the same direction (a parallel shift); PC2 typically moves short and "
+    "These lines show HOW each recurring pattern moves the curve, estimated from real history. PC1 "
+    f"('level'), in this window: {level_shape}. PC2 typically moves short and "
     "long tenors in opposite directions (the curve steepens or flattens); PC3 typically bends the middle "
     "of the curve against both ends. The cards above show what a typical-sized move in each pattern would "
     "do to this portfolio's value, in currency (main figure) and percent (small figure below it)."
@@ -758,7 +759,7 @@ st.plotly_chart(_style_fig(fig_scores), width="stretch")
 st.caption(
     "Each line shows how far that single day's curve move lined up with one recurring pattern, in basis "
     "points -- NOT a standard-deviation count. A tall spike on the level line means that day's move looked "
-    "a lot like 'the whole curve shifted together'; a tall spike on the slope line means it looked more "
+    f"a lot like PC1's pattern ({level_shape}); a tall spike on the slope line means it looked more "
     "like 'short and long rates moved apart'."
 )
 

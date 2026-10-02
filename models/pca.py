@@ -94,6 +94,12 @@ DEFAULT_PCA_LOOKBACK_YEARS = 2.0
 
 DEFAULT_N_COMPONENTS = 3
 
+# Special Phase B: PC1 counts as "close to a parallel shift" only if its
+# largest tenor loading is within this multiple of its smallest. A
+# readability threshold for the dashboard's wording, not a statistical
+# test.
+PARALLEL_SHIFT_MAX_RATIO = 1.25
+
 
 @dataclass(frozen=True)
 class CurvePCAResult:
@@ -283,6 +289,29 @@ def compute_curve_pca(
         explained_variance_ratio_all=ratio_all,
         loadings=loadings,
         full_loadings=full_loadings,
+    )
+
+
+def describe_level_shape(pc1_loadings: pd.Series) -> str:
+    """Plain-English description of PC1's shape, read from its actual
+    loadings (index = tenor in years) -- e.g. "every tenor moves the same
+    way, but not equally: 20Y moves ~4.0x as much as 1Y".
+
+    Special Phase B: built at runtime instead of hardcoding "a parallel
+    shift", which the real loadings don't support (front end ~0.08 vs
+    ~0.30 from the belly out on the default window) and which could go
+    stale as the window changes.
+    """
+    if not ((pc1_loadings > 0).all() or (pc1_loadings < 0).all()):
+        return "tenors do not all move the same way in this window"
+    magnitudes = pc1_loadings.abs()
+    largest, smallest = magnitudes.idxmax(), magnitudes.idxmin()
+    ratio = magnitudes.max() / magnitudes.min()
+    if ratio <= PARALLEL_SHIFT_MAX_RATIO:
+        return "every tenor moves the same way by a similar amount (close to a parallel shift)"
+    return (
+        f"every tenor moves the same way, but not equally: {largest:g}Y moves "
+        f"~{ratio:.1f}x as much as {smallest:g}Y"
     )
 
 
