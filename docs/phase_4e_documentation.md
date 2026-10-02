@@ -150,9 +150,14 @@ downloads, because the rest are keyed on the curve or history. Leaving
 them would only pile up cache entries for data that's no longer shown.
 
 **Why a button, not an automatic expiry.** MOF publishes once per
-business day, so a timed expiry would mostly re-download unchanged data
-(the history file is ~1.2MB) and make random page loads slow. A button
-refreshes only when someone wants it.
+business day, so a rolling expiry (e.g. every few hours) would mostly
+re-download unchanged data (the history file is ~1.2MB) and make random
+page loads slow. A refresh at a fixed time just after MOF publishes
+avoids both problems (§8), but isn't built yet. MOF publishes each
+day's rates at "around 9:30 JST on the next business day" (its FAQ,
+checked 2026-09-29, which calls this a planned time, not a promise).
+On a day MOF is late, a fixed-time refresh would show the previous
+data with a new fetch time.
 
 **Checked directly** (Streamlit's `AppTest`): a normal rerun keeps the
 cached fetch time; clicking the button changes it and raises no errors.
@@ -272,14 +277,22 @@ downloads from MOF.
 count as complete, so the next month could follow straight away instead
 of waiting for MOF's historical file (§3).
 
-**An automatic daily refresh** (e.g. a cache expiry timed just after
-MOF's daily publication) would remove the need to click, at the cost of
-a slow page load once a day. Not built, because the button already
-covers it.
+**A daily refresh at a fixed time**, a little after MOF's ~9:30 JST
+publication (§4), e.g. 10:30 JST on business days. Streamlit only runs
+code when someone opens the page, so on each load the app would check
+whether its data was fetched before today's refresh time and, if so,
+clear the caches as the button does. This removes the need to click, at
+the cost of one slow page load a day. Not built yet, because the button
+already covers it and a late MOF publication would still need a manual
+refresh. It doesn't fix §7.2, since nothing runs if nobody opens the
+page.
 
-**Persistent storage** (e.g. a small database, or committing the cache)
-would fix §7.1 for a hosted deployment. It isn't built now, because the
-only cost today is a few days' delay after a restart near a month end.
+**A scheduled job with persistent storage** (e.g. a daily cron job or
+GitHub Action that runs the loader and saves the cache to a small
+database or the repo) would fix §7.2, because it runs whether or not
+anyone opens the app, and §7.1, because the cache would survive a
+restart. It isn't built now, because the only cost today is a few days'
+delay near a month end.
 
 ---
 
