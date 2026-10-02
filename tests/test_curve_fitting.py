@@ -30,6 +30,7 @@ from models.curve_fitting import (
     SvenssonFitResult,
     fit_nelson_siegel,
     fit_svensson,
+    leave_one_tenor_out,
     residuals_at_original_tenors,
     residuals_bp,
 )
@@ -288,3 +289,48 @@ def test_too_few_points_rejected_for_svensson():
     )
     with pytest.raises(ValueError, match="at least 6"):
         fit_svensson(small_curve)
+
+
+# --------------------------------------------------------------------------
+# leave_one_tenor_out (Special Phase B)
+# --------------------------------------------------------------------------
+
+
+def _small_par_curve(bump_10y: float = 0.0) -> pd.DataFrame:
+    tenors = [1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0]
+    yields = [0.010, 0.012, 0.014, 0.018, 0.021, 0.025, 0.030, 0.033, 0.035]
+    curve = pd.DataFrame({"maturity_years": tenors, "yield": yields})
+    curve.loc[curve["maturity_years"] == 10.0, "yield"] += bump_10y
+    return curve
+
+
+def test_loto_held_out_tenor_never_reaches_its_own_fold():
+    # The leakage check: moving the held-out 10Y quote must not move that
+    # fold's prediction at 10Y -- only the target it's compared against.
+    base = leave_one_tenor_out(_small_par_curve())
+    bumped = leave_one_tenor_out(_small_par_curve(bump_10y=0.005))
+    full_base = bootstrap_zero_curve(_small_par_curve()).set_index("maturity_years")["zero_rate"]
+    full_bumped = bootstrap_zero_curve(_small_par_curve(bump_10y=0.005)).set_index("maturity_years")["zero_rate"]
+    target_shift_bp = (full_bumped.loc[10.0] - full_base.loc[10.0]) * 10000.0
+    for column in ("ns_residual_bp", "svensson_residual_bp"):
+        assert bumped.loc[10.0, column] - base.loc[10.0, column] == pytest.approx(target_shift_bp, abs=1e-6)
+
+
+def test_loto_returns_one_row_per_tenor_with_edges_flagged():
+    result = leave_one_tenor_out(_small_par_curve())
+    assert list(result.index) == _small_par_curve()["maturity_years"].tolist()
+    assert result["edge"].tolist() == [True] + [False] * 7 + [True]
+
+
+def test_loto_on_the_real_snapshot_curve():
+    # Pinned in docs/special_phase_b_documentation.md: NS never converges,
+    # Svensson always does; Svensson predicts better on 9 of 13 interior
+    # tenors but extrapolates badly at 40Y; both miss 25Y by 20bp+.
+    result = leave_one_tenor_out(load_jgb_curve(prefer_live=False, verbose=False))
+    interior = result.loc[~result["edge"]]
+    assert not result["ns_converged"].any()
+    assert result["svensson_converged"].all()
+    assert (interior["svensson_residual_bp"].abs() < interior["ns_residual_bp"].abs()).sum() == 9
+    assert abs(result.loc[40.0, "svensson_residual_bp"]) > 90.0
+    assert abs(result.loc[25.0, "ns_residual_bp"]) > 20.0
+    assert abs(result.loc[25.0, "svensson_residual_bp"]) > 20.0

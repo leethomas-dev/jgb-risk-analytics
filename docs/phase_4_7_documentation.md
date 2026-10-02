@@ -1,5 +1,11 @@
 # Phase 4.7 Documentation — `app.py` (Streamlit dashboard) + deployment readiness
 
+> **Special Phase B (2026-10-02):** PC1 is still called "level", but the
+> dashboard no longer describes it as a parallel shift: its loadings rise
+> from ~0.08 at 1Y to ~0.30 from 7Y out. The wording is now generated from
+> the loadings — see
+> [`special_phase_b_documentation.md`](special_phase_b_documentation.md) §1.
+
 > **Special Phase A (2026-09-27):** figures in this doc were computed on
 > the par discounting basis in force when this phase was built. The
 > project now discounts on the bootstrapped zero curve by default; current

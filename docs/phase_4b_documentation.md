@@ -1,4 +1,10 @@
-/# Phase 4B Documentation — `models/pca.py`
+# Phase 4B Documentation — `models/pca.py`
+
+> **Special Phase B (2026-10-02):** PC1 is still called "level", but the
+> dashboard no longer describes it as a parallel shift: its loadings rise
+> from ~0.08 at 1Y to ~0.30 from 7Y out. The wording is now generated from
+> the loadings — see
+> [`special_phase_b_documentation.md`](special_phase_b_documentation.md) §1.
 
 **Related, added later (Phase 4.5B, not this phase):**
 `models/diebold_li.py` fits a dynamic (fixed-tau) Nelson-Siegel model

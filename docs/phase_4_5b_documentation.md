@@ -1,5 +1,13 @@
 # Phase 4.5B Documentation — `models/curve_fitting.py`
 
+> **Special Phase B (2026-10-02):** Svensson almost nests Nelson-Siegel
+> (`beta3 = 0`), so its lower in-sample RMSE in §6 is close to guaranteed
+> and proves little. A leave-one-tenor-out test on the 15 real MOF tenors
+> shows Svensson interpolates the belly better but only modestly (8.45 vs.
+> 7.05bp interior RMSE), misses 40Y by ~99bp when extrapolating, and that
+> neither model predicts 25Y — see
+> [`special_phase_b_documentation.md`](special_phase_b_documentation.md) §2.
+
 **Related, added later:** `models/diebold_li.py` extends this phase's
 cross-sectional Nelson-Siegel/Svensson fitting with Diebold & Li's (2006)
 DYNAMIC (fixed-tau) Nelson-Siegel, run across an entire historical curve

@@ -432,6 +432,44 @@ def residuals_at_original_tenors(
     return all_residuals.loc[mask]
 
 
+def leave_one_tenor_out(par_curve: pd.DataFrame) -> pd.DataFrame:
+    """Out-of-sample check of NS vs. Svensson (Special Phase B). Svensson
+    nearly nests NS, so its lower in-sample RMSE proves little; this asks
+    which model better PREDICTS a real MOF tenor it never saw.
+
+    For each quoted tenor: drop it from the par curve BEFORE bootstrapping
+    (dropping it afterwards would leak -- the interpolated grid points
+    either side would still carry its value), bootstrap the rest, fit both
+    models, and compare each model's rate at the dropped tenor with the
+    full curve's zero rate there.
+
+    Returns one row per held-out tenor: residual in bp (target - model,
+    the same sign as residuals_bp) and each fit's `converged` flag,
+    reported per fold rather than filtered.
+    `edge` marks the shortest and longest tenors, where the prediction is
+    an extrapolation rather than an interpolation.
+    """
+    curve = par_curve.sort_values("maturity_years").reset_index(drop=True)
+    full_zero = bootstrap_zero_curve(curve)
+    targets = dict(zip(np.round(full_zero["maturity_years"], 6), full_zero["zero_rate"]))
+
+    rows = []
+    for i, tenor in enumerate(curve["maturity_years"].to_numpy(dtype=float)):
+        reduced_zero = bootstrap_zero_curve(curve.drop(index=i))
+        ns = fit_nelson_siegel(reduced_zero)
+        sv = fit_svensson(reduced_zero)
+        target = targets[round(tenor, 6)]
+        rows.append({
+            "tenor": tenor,
+            "edge": i in (0, len(curve) - 1),
+            "ns_residual_bp": (target - float(ns.rate_at(tenor))) * 10000.0,
+            "ns_converged": ns.converged,
+            "svensson_residual_bp": (target - float(sv.rate_at(tenor))) * 10000.0,
+            "svensson_converged": sv.converged,
+        })
+    return pd.DataFrame(rows).set_index("tenor")
+
+
 if __name__ == "__main__":
     curve = load_jgb_curve()
     zero_curve = bootstrap_zero_curve(curve)
