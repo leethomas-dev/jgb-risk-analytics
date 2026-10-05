@@ -57,8 +57,9 @@ so beta0 is the asymptotic rate); beta1 = short-term component (f1 -> 1
 as m -> 0, so beta0+beta1 is the instantaneous short rate) -- often read
 as a slope factor since it decays away at long maturities; beta2 = a
 medium-term "hump" component, governed by the same tau as beta1; tau =
-the decay rate controlling both where beta1's influence fades and where
-beta2's hump is centered (the hump peaks near m = tau).
+the decay parameter, a time constant in years (Diebold-Li's lambda =
+1/tau), controlling both where beta1's influence fades and where beta2's
+hump peaks (at m ~= 1.79 * tau).
 
 Svensson (6 params -- beta0, beta1, beta2, beta3, tau1, tau2): identical
 to Nelson-Siegel, plus a SECOND hump term on its own decay parameter:
@@ -170,8 +171,8 @@ def hump_factors(tau: float, maturities: np.ndarray) -> tuple[np.ndarray, np.nda
 
     f1's 0/0 limit as m/tau -> 0 is 1.0 (L'Hopital) -- guarded via
     np.where rather than left to raise a divide-by-zero warning. Every
-    maturity this project ever passes in is > 0 (the shortest MOF tenor is
-    1 month), so this guard is defensive, not load-bearing on real data.
+    maturity this project ever passes in is > 0, so this guard is
+    defensive, not load-bearing on real data.
     """
     x = maturities / tau
     safe_x = np.where(x > 1e-7, x, 1.0)  # avoids an actual 0/0 while the branch is discarded below

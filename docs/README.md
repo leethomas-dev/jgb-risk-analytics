@@ -56,6 +56,7 @@ later and where it's recorded. `git show <commit>` is the full detail.
 | 2026-09-27 | `b410761` | 2B–4.7 | **Special Phase A:** zero-curve discounting as the default basis, par-vs-zero factor monitor. Earlier docs keep their par figures plus a header note | `special_phase_a` §5A |
 | 2026-10-02 | `5a41358`, `a4b933a` | 4B, 4.5B, 4.7 | **Special Phase B:** PC1 caption generated from its loadings (no longer "a parallel shift"); leave-one-tenor-out NS-vs-Svensson test | `special_phase_b` §1–2 |
 | 2026-10-02 | `2c74e44`, `f219434`, `bb24e89` | 4.5A, 4.5B-DL, 4C, 4D | **Special Phase B:** par-curve error measured against JSDA bond prices; its effect on factor results tested; decision record added. Header notes on the affected docs | `special_phase_b` §3–4, `future_curve_construction` |
+| 2026-10-05 | (uncommitted) | 4.5B, 4.5B-DL, 4.5C, 4.7 | Doc and comment corrections, no code change: Waggoner's penalty direction was backwards (light short end, heavy long end); Svensson's converged `beta0`/`beta3` offset each other and aren't readable alone; NS hump peaks at ≈1.79×tau, not tau; tau/lambda notation note; stale RMSE and tau figures updated | `phase_4_5b` §1, §6; `phase_4_5b_dl` §2, §6 |
 
 The project-wide fallback re-anchoring policy (§5 of the Phase 1 doc) and
 the reasoning for why it does or doesn't apply to a given phase's hardcoded

@@ -299,7 +299,7 @@ The mismatch traces to a specific, checkable cause: **`tau = 50` years is
 large relative to this project's 1-40Y tenor range**, so `f1`/`f2` barely
 decay across it — `f1` only falls from 0.990 at 1Y to 0.688 at 40Y,
 nowhere near the sign change a genuine slope factor needs, and `f2`'s
-"hump" (centered near `m = tau`) never turns over within a 40-year grid
+"hump" (peaking at `m ≈ 1.79 × tau` ≈ 90Y) never turns over within a 40-year grid
 at all. This is a property of *this specific fitted tau*, not of
 Nelson-Siegel's functional form in the abstract — checked directly, not
 assumed:

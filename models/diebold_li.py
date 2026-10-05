@@ -82,9 +82,10 @@ minimizing the MEDIAN per-date RMSE across that whole sample -- median,
 not mean, so a handful of genuinely hard dates (§2 below) don't pull the
 choice away from what fits typical days well. See tau_sensitivity() and
 docs/phase_4_5b_dl_documentation.md §2 for the actual sweep and result
-(DEFAULT_TAU = 7.0 years, materially different from the ~34-year tau this
+(DEFAULT_TAU = 7.0 years, materially different from the tau this
 project's OWN cross-sectional fit finds for the single most recent date --
-models/curve_fitting.py -- itself an illustration of exactly why a fixed,
+models/curve_fitting.py, which on the 15-tenor grid runs to the 50-year
+bound and does not converge -- itself an illustration of exactly why a fixed,
 historically-representative tau is the more stable choice for a time
 series, rather than re-optimizing tau at every date and risking the
 per-date instability that module was built to handle carefully).
@@ -132,8 +133,8 @@ either way, not adjusted to look more or less confirmatory than it is.
 5. PLANNED SR 11-7 BENCHMARK MODEL, NOT BUILT HERE.
 
 A smoothing spline (specifically Waggoner 1997, whose roughness penalty
-varies by maturity segment -- heavy smoothing at the short end, more
-flexibility at the volatile ultra-long end) is the intended BENCHMARK
+is a three-step function of maturity -- light at the short end, heavy at
+the long end; docs/phase_4_5b_dl_documentation.md §6) is the intended BENCHMARK
 MODEL this project's eventual Phase 6 SR 11-7 write-up will compare
 Nelson-Siegel/Svensson/Diebold-Li against. Recorded here as a planned
 future benchmark, per the phase brief -- not built, and no code in this

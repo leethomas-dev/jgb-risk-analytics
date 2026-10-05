@@ -115,6 +115,14 @@ findings), so copying that number, or even its "target a specific short/
 medium maturity" framing, uncritically would center the model's hump at a
 point with no principled connection to Japan's own tenor range.
 
+**Notation.** The paper writes maturity as `tau` and the decay as a rate
+`lambda`; this project writes maturity as `m` and the decay as a time
+constant `tau = 1/lambda` (years), with betas numbered from `beta0`
+(the paper's `beta1`). Same formula. The paper's `lambda = 0.0609` is
+per **month**: `tau` ≈ 16.4 months ≈ 1.37 years, hump at ≈ 30 months.
+This project's `tau = 7` years is `lambda` ≈ 0.143 per year, hump at
+≈ 12.5 years (peak at ≈ 1.79 × `tau`).
+
 **What was done instead:** `tau_sensitivity()` sweeps a bounded grid of
 candidate tau values and fits (via the same closed-form OLS) every date
 in the project's default historical window (the same 2-year, post-YCC
@@ -315,13 +323,26 @@ project's existing chart modules.
 ## 6. Planned SR 11-7 benchmark model — recorded, not built
 
 For the eventual Phase 6 validation write-up: a **smoothing spline**
-(specifically **Waggoner (1997)**, whose roughness penalty varies by
-maturity segment — heavy smoothing at the short end, more flexibility at
-the volatile ultra-long end) is the intended **benchmark model** this
-project's Nelson-Siegel, Svensson, and Diebold-Li fits will eventually be
-compared against for SR 11-7 purposes. It is recorded here as a planned
-future benchmark only — not built, and nothing in this module or
-`curve_fitting.py` depends on it existing yet.
+(specifically **Waggoner (1997)**, whose roughness penalty is a
+three-step function of maturity, with steps at 1Y and 10Y — **light at
+the short end, heavy at the long end**, so the curve is flexible where
+expectations are precise and stiff at long maturities) is the intended
+**benchmark model** this project's Nelson-Siegel, Svensson, and
+Diebold-Li fits will eventually be compared against for SR 11-7
+purposes. It is recorded here as a planned future benchmark only — not
+built, and nothing in this module or `curve_fitting.py` depends on it
+existing yet.
+
+**Corrected 2026-10-05.** This section first said the opposite (heavy
+smoothing at the short end, flexible at the ultra-long end). Source for
+the correction: Anderson & Sleath, "New estimates of the UK real and
+nominal yield curves", *Bank of England Quarterly Bulletin*, Nov 1999.
+Two consequences for Phase 6: (1) the steps were set for the US
+bills/notes/bonds split, so JGBs to 40Y may need their own; (2) the
+comparison can't be a straight RMSE contest. MOF's 15Y and 25Y points
+are data artifacts (`special_phase_b_documentation.md` §3), so a model
+that fits them more closely isn't more right. A standard (stiff long-end)
+Waggoner spline would likely smooth through 25Y as Svensson does.
 
 ---
 

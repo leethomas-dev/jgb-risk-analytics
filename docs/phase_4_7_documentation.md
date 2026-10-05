@@ -171,8 +171,9 @@ code, judged worth it for the more legible layout.
 ## 5. Which parametric fit is shown — measured on THIS curve, not hardcoded
 
 Phase 4.5B found Svensson fits the *committed snapshot* curve better
-(3.2bp vs. 5.9bp RMSE) — but that same doc's §5 also found Nelson-Siegel
-can fail to converge on a *live* 15-tenor grid lacking sub-year points.
+(4.27bp vs. 6.68bp RMSE, since the 2026-09-27 snapshot refresh) — and
+that same doc's §5 found Nelson-Siegel fails to converge on 15-tenor
+grids lacking sub-year points, the snapshot and live curves alike.
 The dashboard doesn't hardcode "always show Svensson": it fits both
 (`fit_nelson_siegel`, `fit_svensson`, both cached) against whatever curve
 is actually loaded, and picks whichever has the lower `rmse_bp`,

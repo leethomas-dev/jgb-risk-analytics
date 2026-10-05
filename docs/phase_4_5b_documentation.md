@@ -84,10 +84,13 @@ where f1(m, tau) = (1 - exp(-m/tau)) / (m/tau)
   `f1 → 1`, so `y(0) = beta0 + beta1` — the model's instantaneous short
   rate. Also checked directly (`test_beta0_plus_beta1_is_the_short_rate_limit`).
 - **`beta2` — medium-term "hump" component.** Governed by the same `tau`
-  as `beta1`; contributes a hump (or trough) centered near `m = tau`,
+  as `beta1`; contributes a hump (or trough) peaking at `m ≈ 1.79 × tau`,
   vanishing at both very short and very long maturities.
 - **`tau` — decay.** Controls both where `beta1`'s influence fades and
-  where `beta2`'s hump is centered.
+  where `beta2`'s hump peaks. A time constant in the same unit as `m`
+  (years). Diebold & Li (2006) write the same parameter as a rate,
+  `lambda = 1/tau`, and use `tau` for maturity instead; the formula is
+  identical (`m/tau` here is their `lambda × tau`).
 
 **Svensson** (6 parameters — adds `beta3, tau2`):
 
@@ -248,9 +251,17 @@ proves the mechanism fires on a deterministic synthetic case too.
 | Converged | **False** | True |
 
 **Svensson fits this curve better** — 4.3bp RMSE vs. 6.7bp — and is the
-only one of the two that converged, so its parameters are the only ones
-worth reading (Nelson-Siegel's betas, sitting on a boundary `tau`, are
-large offsetting numbers, not meaningful levels). This is measured, not
+only one of the two that converged. Nelson-Siegel's betas, sitting on a
+boundary `tau`, are large offsetting numbers, not meaningful levels.
+
+**Converged doesn't mean every Svensson beta reads cleanly (added
+2026-10-05).** `tau2 = 19.447` puts the second hump's peak at about
+1.79 × 19.4 ≈ 35Y, at the end of the data, so across 1–40Y that term is
+still rising and acts like a second level. `beta0` (−4.31%) and `beta3`
+(+26.89%) offset each other: `beta0` is not a usable long-run level here
+(§1's limit holds mathematically but lies far beyond the data). Read the
+fitted curve and `tau1`/`tau2`, not `beta0`/`beta3` on their own. This
+is measured, not
 assumed: the phase brief warns against assuming Svensson wins because of
 Japan's complex ultra-long segment, and the residual table below shows
 that assumption would have been the wrong story. The dashboard follows
