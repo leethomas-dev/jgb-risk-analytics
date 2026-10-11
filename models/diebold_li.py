@@ -69,8 +69,8 @@ right-hand sides) rather than one Python-level regression per date.
 2. THE TAU CHOICE -- DERIVED FOR JGBS, NOT COPIED FROM THE ORIGINAL PAPER.
 
 Diebold & Li (2006) fixed tau at the value maximizing the curvature
-loading at a 30-month maturity, for US Treasuries -- a market whose
-quoted curve mostly runs under 10 years. JGB curves run to 40 years with
+loading at a 30-month maturity, on US Treasury data that stopped at 10
+years (3 to 120 months; the US curve itself runs to 30). JGB curves run to 40 years with
 genuine, real long-end curvature (docs/phase_3c_documentation.md,
 docs/phase_4b_documentation.md), so copying that specific value (or even
 its "target maturity" framing) uncritically would center the model's
@@ -162,9 +162,9 @@ from models.pca import DEFAULT_PCA_LOOKBACK_YEARS, CurvePCAResult, compute_curve
 # against the project's default 2-year historical window
 # (docs/phase_4_5b_dl_documentation.md §2), not copied from Diebold & Li's
 # original US-Treasury-calibrated value. Rounded from the sweep's raw
-# optimum (~6.89 years) to a clean, easily-communicated number: the
+# optimum (~6.78 years) to a clean, easily-communicated number: the
 # median RMSE at 7.0 (5.47bp) is negligibly different from the sweep's
-# exact minimum (5.42bp at 6.89) -- see the sensitivity table in the docs
+# exact minimum (5.45bp at 6.78) -- see the sensitivity table in the docs
 # for how flat that region actually is.
 DEFAULT_TAU = 7.0
 

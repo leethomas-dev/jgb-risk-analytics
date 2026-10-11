@@ -252,7 +252,13 @@ proves the mechanism fires on a deterministic synthetic case too.
 
 **Svensson fits this curve better** — 4.3bp RMSE vs. 6.7bp — and is the
 only one of the two that converged. Nelson-Siegel's betas, sitting on a
-boundary `tau`, are large offsetting numbers, not meaningful levels.
+boundary `tau`, are large offsetting numbers, not meaningful levels. This
+is measured, not assumed: the phase brief warns against assuming
+Svensson wins because of Japan's complex ultra-long segment, and the
+residual table below shows that assumption would have been the wrong
+story. The dashboard follows the same rule — a converged fit is
+preferred over a non-converged one regardless of RMSE (`app.py`,
+`docs/phase_4_7_documentation.md`).
 
 **Converged doesn't mean every Svensson beta reads cleanly (added
 2026-10-05).** `tau2 = 19.447` puts the second hump's peak at about
@@ -260,13 +266,36 @@ boundary `tau`, are large offsetting numbers, not meaningful levels.
 still rising and acts like a second level. `beta0` (−4.31%) and `beta3`
 (+26.89%) offset each other: `beta0` is not a usable long-run level here
 (§1's limit holds mathematically but lies far beyond the data). Read the
-fitted curve and `tau1`/`tau2`, not `beta0`/`beta3` on their own. This
-is measured, not
-assumed: the phase brief warns against assuming Svensson wins because of
-Japan's complex ultra-long segment, and the residual table below shows
-that assumption would have been the wrong story. The dashboard follows
-the same rule — a converged fit is preferred over a non-converged one
-regardless of RMSE (`app.py`, `docs/phase_4_7_documentation.md`).
+fitted curve and `tau1`/`tau2`, not `beta0`/`beta3` on their own.
+
+**Why neither fit is used for pricing (recorded 2026-10-08).** Pricing
+and risk discount on Part A's bootstrapped zero curve. The fits describe
+the curve; they don't price off it. This wasn't written down when the
+phase was built; the reasons:
+
+1. **The fit adds error the bootstrap doesn't have.** The bootstrapped
+   curve reprices its own input par bonds to par
+   (`tests/test_bootstrap.py::test_original_par_bonds_reprice_to_par_off_the_zero_curve`).
+   Svensson misses MOF's real tenors by up to ~5bp at 1Y and ~8bp at 40Y
+   (§7); pricing off it would put that into every price.
+2. **Key rate durations need local bumps.** KRD bumps one tenor and
+   reprices (Phase 3A). Bumping one input and refitting a parametric
+   curve moves it everywhere, because a few parameters set the whole
+   shape. Anderson & Sleath (*Bank of England Quarterly Bulletin*, Nov
+   1999) show the same: changing one long-end point moved a Svensson
+   curve sharply, most of all at the short end.
+3. **The parameters aren't stable.** Nelson-Siegel doesn't converge on
+   this curve, Svensson's parameters shift with grid resolution and can
+   blow up while "converged" (§8.4–8.5), and the dashboard's choice
+   between the two can change from day to day. Prices would move for
+   reasons that aren't market moves.
+
+One point the other way: at 25Y Svensson sits ~14bp below MOF's point,
+which is itself ~32bp above a par yield (`special_phase_b_documentation.md`
+§3.4), so near 25Y the fit may be closer to the true curve. The
+portfolio holds no 25Y bond. Fitting Nelson-Siegel/Svensson directly to
+bond prices, as the Fed's published curve does, is a different matter:
+that's option B in `future_curve_construction.md`.
 
 ---
 
@@ -337,11 +366,57 @@ defined here) on the committed snapshot and on live MOF curves — both
 15-tenor grids lacking sub-year points. Any consumer of this module should check
 `.converged` rather than assume it.
 
+**`.converged` is necessary, not sufficient (added 2026-10-06).** It
+only says the decay search stopped inside its bounds. A Svensson fit can
+pass it and still have betas that blow up in opposite directions, with
+the curve itself still fitting well (RMSE 2.5–4bp in every case below).
+Two ways, both measured on 60 dates sampled from the 2-year history:
+
+- **Near-equal decays.** `tau2 > tau1` is the only separation rule, so
+  nearly equal pairs are allowed. Then the two humps look the same and
+  their betas can't be told apart: on 2025-08-25 (the 15-point history
+  zero curve) Svensson chose `tau1 = 3.340`, `tau2 = 3.354` and gave
+  `beta3 = −924%`. The same date on the 80-point app curve was fine.
+- **A decay just inside the bound.** The edge check only catches values
+  at exactly 0.05 or 50. On 2025-01-17 (80-point curve) `tau2 = 49.58`
+  passed as converged, with `beta0 = +175%` and `beta3 = −423%`.
+
+A fixed gap (`tau2 > tau1 + c`) would be the wrong fix. How alike the
+humps look depends on the ratio `tau2/tau1` and on how large both are
+compared with the 40Y data (at `tau1 = 30`, the humps are 0.98
+correlated even at five times the gap). A check on how close X's
+columns are to redundant (its condition number: about 47 on a normal
+fit here, 10,000–16,000 in the cases above) would catch both. Not built.
+The app only draws the fitted curve, so it isn't affected; anything that
+reads Svensson's betas should check this first.
+
+**A ratio rule was tested (2026-10-06), not adopted.** Requiring
+`tau2 > 1.5 × tau1` on the same two near-equal dates:
+
+| Date (15-point curve) | Rule | `tau1` | `tau2` | RMSE | `beta2` | `beta3` |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2025-08-25 | `tau2 > tau1` | 3.340 | 3.354 | 2.549bp | +918% | −924% |
+| 2025-08-25 | `tau2 > 1.5 × tau1` | 0.896 | 4.320 | 2.581bp | −2.9% | −9.8% |
+| 2025-09-04 | `tau2 > tau1` | 3.499 | 3.513 | 2.739bp | +908% | −914% |
+| 2025-09-04 | `tau2 > 1.5 × tau1` | 0.881 | 4.411 | 2.734bp | −3.4% | −10.3% |
+
+It removes the blow-up for at most 0.03bp of fit and doesn't change the
+snapshot (ratio ≈ 6.6). It doesn't catch the `tau2` ≈ 50 case (ratio
+≈ 3.9), and 1.5 is arbitrary. **Deferred to Phase 6:** a ratio rule plus
+a condition-number flag, checked on all history dates, with the app's
+selection rule reviewed. Nothing reads Svensson's betas today; if
+anything starts to, fix this first.
+
 **8.5 A grid search finds the best point on a finite grid, not a
 provably global continuous optimum.** The two-stage (coarse + refined)
-design narrows this gap considerably, but a sufficiently pathological
-curve could in principle have a true optimum between grid points that
-neither stage samples exactly. Not observed on this project's real data.
+design narrows this gap, but doesn't close it. Observed on the snapshot
+(checked 2026-10-06 by re-running Svensson with finer grids): the
+project's 150/60 grid gives `tau1 = 2.941`, `tau2 = 19.447`, RMSE
+4.2737bp; finer grids (300/120, 600/300) find `tau1` ≈ 3.09,
+`tau2` ≈ 19.68, RMSE 4.2661bp, with `beta3` moving from 26.9% to about
+28.1%. The curve barely changes (under 0.01bp); the parameters do,
+because many nearby pairs fit almost equally well. Another reason to read
+the curve, not the individual betas.
 
 ---
 

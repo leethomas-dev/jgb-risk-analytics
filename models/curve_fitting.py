@@ -223,9 +223,13 @@ def _grid_search_ns_tau(maturities: np.ndarray, targets: np.ndarray) -> tuple[fl
 
 def _grid_search_svensson_taus(maturities: np.ndarray, targets: np.ndarray) -> tuple[float, float, bool]:
     """Two-stage grid search over (tau1, tau2) for Svensson, with tau2 >
-    tau1 enforced throughout (module docstring -- avoids the near-
-    collinear, poorly-identified region where the two hump terms compete
-    for the same shape). Returns (best_tau1, best_tau2, converged)."""
+    tau1 enforced throughout. The formula fixes the roles (tau1 drives the
+    slope and first hump, tau2 the second hump); the rule fixes the order,
+    so beta3's hump is always the later one. The two orders are different
+    models, since f1 uses tau1 only. It does NOT exclude near-equal pairs,
+    which can still give exploding betas -- docs/phase_4_5b_documentation.md
+    §8.4 (a tau2 > 1.5 * tau1 rule was tested there; deferred to Phase 6).
+    Returns (best_tau1, best_tau2, converged)."""
 
     def _best_over_grid(grid: np.ndarray) -> tuple[float, float, float]:
         best_sse, best_t1, best_t2 = np.inf, grid[0], grid[-1]

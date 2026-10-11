@@ -9,6 +9,28 @@
 > which may partly explain the weak level correlation (0.269). See
 > [`future_curve_construction.md`](future_curve_construction.md) §2, §10.
 
+> **Measured 2026-10-10: the artifact explains only about a third of
+> the poor fits.** The April–August 2026 misses are concentrated at 25Y
+> (actual ~32bp above the fit) and 40Y (~33bp below); together ~73% of
+> the squared error. Refitting without 15Y and 25Y lowers the period's
+> median RMSE only from 14.1bp to 10.5bp (early 2024–25: ~4.7bp), and
+> 40Y is still missed by ~22bp. The rest is real: from mid-2026 40Y sat
+> below 30Y (40Y comes from a near-par bond, within 0.2bp of par), and
+> with `tau = 7` (hump at ~12.5Y) and an upward slope the model's 30–40Y
+> section can only rise; turning it down would need `beta2` ≈ +5.4%
+> (window maximum +0.82%). The 25Y distortion also grew gradually with
+> yields (25Y bump over the 20Y–30Y line ~1–5bp in late 2024, ~13–16bp in
+> 2026); April is when the rising RMSE crossed the 2× median threshold.
+> So §3's "genuine regime" reading was partly right.
+>
+> **Also measured 2026-10-10: matching §4's inputs helps level only.**
+> PCA rebuilt on the zero-curve history (same inputs as Diebold-Li):
+> level 0.269 → 0.491, slope 0.955 → 0.888, curvature 0.504 → 0.320. The
+> mixed basis explains part of the weak level match, not most of it;
+> zero-curve PC1 is even more tilted to the long end (loadings 1Y 0.05,
+> 10Y 0.26, 40Y 0.39). The project's comparison stays on the raw-yield
+> PCA, because that is the PCA the risk work uses (Special Phase A §2).
+
 This is a Phase 4.5B addition (it extends `models/curve_fitting.py`'s
 Nelson-Siegel/Svensson fitting — see §1), not a Phase 4B one, even though
 its Part 3 comparison reads Phase 4B's existing PCA output. The model
@@ -107,8 +129,9 @@ fitting logic, bounds, or grid search was touched.
 ## 2. The tau choice — derived for JGBs, not copied from the original paper
 
 Diebold & Li (2006) fixed tau at the value maximizing the curvature
-loading at a 30-month maturity, calibrated for **US Treasuries** — a
-market whose quoted curve mostly runs under 10 years. JGB curves run to
+loading at a 30-month maturity, calibrated on **US Treasury** data that
+stopped at 10 years (17 maturities from 3 to 120 months, monthly,
+1985–2000; the US curve itself runs to 30 years). JGB curves run to
 **40 years** with genuine long-end curvature (this project's own
 `docs/phase_3c_documentation.md` and `docs/phase_4b_documentation.md`
 findings), so copying that number, or even its "target a specific short/
@@ -391,7 +414,11 @@ correct" slope factor, or that the two are interchangeable in every use.
 make §4's comparison fully apples-to-apples — additive work (a new
 `compute_curve_pca`-style call against
 `models.bootstrap.bootstrap_zero_curve_history`'s output), not a change
-to the existing, shipped PCA module.
+to the existing, shipped PCA module. **Done as a check on 2026-10-10**
+(no code change: the existing functions, given zero-curve inputs): it
+improves level (0.269 → 0.491) but lowers slope and curvature (header
+note). Not adopted as the main comparison, which should test the PCA the
+risk work actually uses.
 
 **A Waggoner (1997) smoothing-spline benchmark** (§6) is the planned next
 step for the eventual Phase 6 SR 11-7 write-up — not built now.
@@ -404,6 +431,29 @@ new analysis, not a change to this module's existing fitting logic.
 **A different fixed tau**, if a future dataset or window shifted the
 sweep's optimum, is a one-constant change (`DEFAULT_TAU`) — `tau_sensitivity()`
 is already built to re-derive it.
+
+**Forecasting the betas — Diebold & Li's second step (potential upgrade,
+added 2026-10-07).** This module stops after fitting the beta history.
+The paper goes on to model each beta as an AR(1) (tomorrow's value = a
+constant plus a multiple of today's), also tries a VAR(1) (the betas
+affect each other), and turns the forecast betas back into forecast
+yield curves. Not built because the project measures risk rather than
+predicting rates, and its scenarios come from PCA on actual history.
+It would be additive (a new function on `DieboldLiHistoryResult.betas`;
+no change to the fitting). Things to settle first:
+
+- **Benchmark against "no change".** The paper's first competitor is a
+  random walk (forecast = today's curve). The paper also reports that
+  level and slope may have unit roots, so an AR(1) on them may barely
+  beat "no change"; a forecast that doesn't should not be used.
+- **Daily vs monthly.** The paper used monthly data; daily betas are
+  noisier and the horizon (days vs months) has to be chosen.
+- **Data artifacts.** The April–August 2026 poor fits (§3) and MOF's
+  15Y/25Y points (`special_phase_b_documentation.md` §3) feed straight
+  into the curvature beta, so its forecast would partly forecast an
+  artifact.
+- **Out-of-sample testing.** Forecast only from data available at the
+  time, as the paper does, or the accuracy will be overstated.
 
 ---
 
