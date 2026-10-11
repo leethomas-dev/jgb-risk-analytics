@@ -240,6 +240,82 @@ cumulative total) and the full loadings table, then runs the §2 sanity
 check and prints its actual result — pass or fail — rather than only
 asserting it in the test suite.
 
+### 1.8 Fitted on par yields, not zero rates (added 2026-10-11)
+
+**The factors are fitted on MOF's published yields (treated as par), not
+on bootstrapped zero rates. This matches the rest of the project; it isn't
+an exception to it.** Every risk shock (KRD bumps, factor shocks) is
+applied to the par curve. Zero rates only come in when bonds are
+discounted: shift par, re-bootstrap, reprice
+([`special_phase_a_documentation.md`](special_phase_a_documentation.md)).
+The PCA prices nothing, so it never touches the zero curve.
+
+**Tested against PCA on zero rates: total risk agrees within 1%, but the
+split between factors does not.** The portfolio's slope (PC2) exposure is
+**−0.099** per 100 face on par factors and **−0.020** on zero factors.
+Any "slope risk" figure in this project, including Special Phase A's
+45% understatement, is specific to par-yield factors.
+
+Same 2-year window (486 dates, 15 tenors), committed data. Regenerate
+with `python -m validation.pca_par_vs_zero`:
+
+| | Par yields (used) | Zero rates |
+| --- | --- | --- |
+| Variance share PC1 / PC2 / PC3 | 75.3 / 20.5 / 1.7% | 67.6 / 25.8 / 3.3% |
+| Shape match with par (loading cosine) | — | 0.98 / 0.97 / **0.81** |
+| +1 std P&L per 100 face, PC1 | −0.2766 | −0.2904 |
+| +1 std P&L per 100 face, PC2 | **−0.0986** | **−0.0195** |
+| +1 std P&L per 100 face, PC3 | −0.0099 | +0.0112 |
+| Combined 1 std (√ sum of squares) | 0.2939 | 0.2912 (−0.9%) |
+
+Why the split moves: zero-rate PC1 already tilts toward the long end
+(+0.5bp at 1Y to +4.2bp at 40Y, against par's +0.8bp to +2.8bp), so it
+absorbs part of what par PCA calls slope. Zero-rate PC2 also pivots
+later, near 17Y instead of 13Y. PC3 differs most (cosine 0.81), with a
+40Y tail twice par's (+1.7bp vs +0.8bp), right in the 30Y–40Y gap that
+straight-line interpolation spans.
+
+**Why par yields:**
+
+1. **They are the observed data.** Zero rates come out of this project's
+   own bootstrap (Phase 4.5A). Fitting on them would mix that model's side
+   effects into the factors.
+2. **Zero-rate changes carry those side effects.** Raising one par yield
+   lifts zero rates up to it and slightly lowers them beyond it (+1bp at
+   15Y gives +1.3bp and −0.2bp from 20Y out, Special Phase A §5). Measured
+   as the jaggedness of daily moves across neighbouring tenors, zero rates
+   match par out to 9Y but reach **2.1× par's at 30Y** (2.76bp vs
+   1.32bp). Zero moves there are only about 1.4× larger overall. This
+   fits the bootstrap amplifying interpolation and coupon artifacts
+   (MOF's 25Y kink, Special Phase B). That reading is suggestive, not
+   proven.
+3. **Either choice works if shocks hit the curve the factors came from.**
+   Par factors with "shift par, re-bootstrap, reprice" is consistent.
+   Zero factors with shocks applied to zero rates directly is also
+   consistent. The error is mixing them: applying par shapes to zero rates
+   (Special Phase A §2).
+4. **Markets quote moves in par terms** ("10Y +5bp"), and so will Phase
+   5.5's stress scenarios.
+
+**The case for zero rates, and when it would win.** Zero rates are what
+pricing actually uses, one rate per payment date. Par yields are blends
+of them, so they smooth the curve's movements and can blur the factors.
+That holds when zero rates are fitted directly to bond prices (as the US
+Federal Reserve's published curve is). Here they are model output from an
+approximated input (Phase 4.5A §1), so the advantage doesn't carry over.
+
+**Caveats:**
+- This module was built before the bootstrap existed, so par was the only
+  option at the time. This section is a later justification, backed by
+  the test above. It wasn't a comparison made at build time.
+- Fitting on par yields doesn't avoid the par-curve approximation
+  (Phase 4.5A §1). Special Phase B measured it moving PC2 exposure
+  **+7.9% against a 10% limit**, with a known omission pushing the same
+  way.
+- One window, one portfolio. The zero-factor P&L applies each 15-tenor
+  shock to the zero curve with straight-line interpolation between
+  tenors. Zero components are sign-aligned to par for comparison.
+
 ---
 
 ## 2. The sanity check: does this curve show the conventional shapes?
@@ -310,6 +386,13 @@ labels meaning anything — `CurvePCAResult` just calls them "component 1,
 2, 3." §2's check is a validation signal, not a classification the rest
 of the pipeline depends on.
 
+**4.5 Factor attribution depends on the curve the PCA is fitted on (§1.8).**
+Total 1 std risk agrees within 1% between par-yield and zero-rate
+factors, but the portfolio's slope exposure is −0.099 on par factors and
+−0.020 on zero factors. Per-factor figures (Phase 4C exposures, Phase 4D
+attribution, Phase 5.5 factor scenarios) should be quoted as par-yield
+factor results, not as curve-independent measures of level or slope risk.
+
 ---
 
 ## 5. What would change this design
@@ -330,6 +413,15 @@ surface option was preferred for this project. Would slot in as an
 alternative weighting scheme inside `compute_curve_pca` (a `halflife`
 parameter producing weighted, not uniform, row weights before the SVD)
 without changing `CurvePCAResult`'s shape.
+
+**Fitting on zero rates instead of par yields (§1.8)** becomes the better
+choice once zero rates come from real bond prices rather than from
+bootstrapping MOF's curve (the future issue-level curve,
+[`future_curve_construction.md`](future_curve_construction.md)). The code
+change is small: pass `bootstrap_zero_curve_history(history)` to
+`compute_curve_pca`, and have Phase 4C and 4D shock zero rates directly
+instead of the par curve. Both halves must switch together (§1.8,
+point 3).
 
 **A different lookback window or `n_components`** need no code change —
 both are already ordinary parameters (`load_jgb_curve_history`'s
