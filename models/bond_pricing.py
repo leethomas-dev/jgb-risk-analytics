@@ -74,9 +74,8 @@ return what this project now documents explicitly as the CLEAN price: the
 sum of discounted future cash flows, on the implicit assumption (built
 into the cash-flow schedule below) that "now" is exactly a coupon date, so
 zero interest has yet accrued. Two new functions build on it without
-touching it: accrued_interest() (coupon prorated by elapsed days over days
-in the current coupon period, per a day count convention -- ACT/365 for
-JGBs, models/day_count.py) and dirty_price() (= price_bond() +
+touching it: accrued_interest() (annual coupon x elapsed days / 365 --
+ACT/365, the JGB convention, models/day_count.py) and dirty_price() (= price_bond() +
 accrued_interest(), what settlement actually pays). See
 docs/phase_4_6a_documentation.md for why settlement/accrued live in two
 new functions rather than as new parameters on price_bond itself, and for
@@ -353,15 +352,13 @@ def _coupon_boundaries(maturity_years: float, valuation_date: date, freq: int) -
     actually priced on, never a second, independently-derived calendar.
 
     Each cash-flow time (a year offset from valuation_date) is converted to
-    a calendar date via DAYS_PER_YEAR (365.25, config.portfolio_loader) --
-    the same calendar-approximation constant Phase 2A already uses to turn
-    a real maturity_date into years, reused here for the inverse direction,
-    rather than a second, differently-tuned approximation. This is a
-    modeling simplification, not a claim that real JGB coupon dates fall
-    exactly 182 or 183 days apart -- see docs/phase_4_6a_documentation.md
-    §1 for what this costs and why it doesn't matter for this project's
-    purpose (there are no real per-bond calendar dates to be more precise
-    than, since the illustrative portfolio only ever gives maturity_years).
+    a calendar date via DAYS_PER_YEAR (365, ACT/365, config.portfolio_loader)
+    -- the same constant Phase 2A uses to turn a real maturity_date into
+    years, reused here for the inverse direction. This is a modelling
+    simplification, not a claim that real JGB coupon dates fall exactly 182
+    or 183 days apart -- see docs/phase_4_6a_documentation.md §3 (there
+    are no real per-bond calendar dates to be more precise than, since the
+    illustrative portfolio only ever gives maturity_years).
     """
     _, cash_flow_times = cash_flow_schedule(maturity_years, freq)
     return [valuation_date] + [
@@ -382,14 +379,14 @@ def accrued_interest(
     and `settlement_date` -- the amount added to the CLEAN price
     (price_bond()) to get the DIRTY price (dirty_price(), below).
 
-    Formula: (coupon per period) x (days elapsed since the period started)
-    / (days in the period), both day counts taken under
-    `day_count_convention` (default ACT/365 -- JGBs,
-    docs/phase_4_6a_documentation.md §1). This is the standard bond-market
-    accrual formula, not a year-fraction-of-the-whole-coupon-rate
-    computation -- see models/day_count.py's own docstring for why those
-    two are different things and this function deliberately uses the
-    former.
+    Formula: face x annual coupon rate x (days elapsed since the period
+    started) / 365 -- `day_count_convention`'s year fraction (default
+    ACT/365, the JGB convention, docs/phase_4_6a_documentation.md §2-3).
+    The denominator is a fixed 365, not the period's own length, so
+    accrued just before a 183-day period ends is slightly MORE than one
+    period's coupon (183/365 > 1/2). That is the convention, not an error.
+    Until 2026-10-11 this prorated by days in the period instead (ACT/ACT
+    ICMA arithmetic under an ACT/365 label).
 
     Parameters
     ----------
@@ -466,10 +463,10 @@ def accrued_interest(
     else:  # pragma: no cover -- unreachable: the two checks above bracket every case
         raise AssertionError("settlement_date fell outside every coupon period")
 
-    days_elapsed = day_count.day_count(period_start, settlement, day_count_convention)
-    days_in_period = day_count.day_count(period_start, period_end, day_count_convention)
-    coupon_per_period = face_value * coupon_rate / freq
-    return coupon_per_period * (days_elapsed / days_in_period)
+    # JGB convention: annual coupon x days elapsed / 365, NOT coupon per
+    # period x days / days in period (that is ACT/ACT ICMA, used for e.g.
+    # US Treasuries). Matches models/par_error_check.py's JSDA check.
+    return face_value * coupon_rate * day_count.year_fraction(period_start, settlement, day_count_convention)
 
 
 def dirty_price(

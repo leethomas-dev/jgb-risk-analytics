@@ -510,20 +510,33 @@ def test_accrued_interest_day_counting_reflects_the_extra_day_in_a_leap_year():
     # 2024-01-01 and settled on 2024-03-01 spans Feb 29 -- the elapsed-days
     # count must include that extra day. Hand-computed via Python's own
     # date arithmetic (an independent computation, not a re-derivation of
-    # accrued_interest's own logic) and cross-checked against the
-    # documented ACT/365 formula (coupon_per_period x days_elapsed /
-    # days_in_period).
+    # accrued_interest's own logic) and cross-checked against the JGB
+    # ACT/365 formula (annual coupon x days_elapsed / 365).
     valuation, settlement = date(2024, 1, 1), date(2024, 3, 1)
     hand_computed_days_elapsed = (settlement - valuation).days
     assert hand_computed_days_elapsed == 60  # 31 (Jan) + 29 (Feb, leap year)
 
     face, coupon, maturity, freq = 100.0, 0.04, 0.5, 2
-    boundaries = _coupon_boundaries(maturity, valuation, freq)
-    days_in_period = (boundaries[1] - boundaries[0]).days
-
     ai = accrued_interest(face, coupon, maturity, freq=freq, valuation_date=valuation, settlement_date=settlement)
-    expected = (face * coupon / freq) * (hand_computed_days_elapsed / days_in_period)
-    assert ai == pytest.approx(expected)
+    assert ai == pytest.approx(face * coupon * hand_computed_days_elapsed / 365)
+
+
+def test_accrued_interest_divides_by_365_not_by_the_period_length():
+    # ACT/365 (JGB), not ACT/ACT ICMA: the last day of a 183-day period
+    # accrues 182/365 of the annual coupon, which differs from ICMA's
+    # (coupon / 2) x 182/183. Pins the convention so a regression to
+    # period-length proration fails here.
+    face, coupon, maturity, freq = 100.0, 0.04, 2.0, 2
+    boundaries = _coupon_boundaries(maturity, _VAL_DATE, freq)
+    period_start, period_end = boundaries[1], boundaries[2]
+    last_day = period_end - timedelta(days=1)
+    days_elapsed = (last_day - period_start).days
+    days_in_period = (period_end - period_start).days
+
+    ai = accrued_interest(face, coupon, maturity, freq=freq, valuation_date=_VAL_DATE, settlement_date=last_day)
+    assert ai == pytest.approx(face * coupon * days_elapsed / 365)
+    icma = (face * coupon / freq) * days_elapsed / days_in_period
+    assert abs(ai - icma) > 1e-6
 
 
 def test_dirty_minus_clean_equals_accrued():

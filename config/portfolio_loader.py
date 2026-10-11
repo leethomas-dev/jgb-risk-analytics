@@ -100,14 +100,13 @@ MAX_PLAUSIBLE_FREQ = 12
 # value, tight enough to catch a real mismatch.
 MATURITY_CONSISTENCY_TOLERANCE_YEARS = 0.05
 
-# Simple ACT/365.25 approximation (calendar days / average year length) for
-# turning a maturity_date into years-remaining -- not a precise bond-market
-# day-count convention. Deliberately coarse: the only downstream use is as
-# a "years" input to curve interpolation, which is itself only a handful
-# of discrete points, so day-count precision here wouldn't add accuracy.
-# A real day-count convention matters for accrued interest and settlement,
-# which are out of scope for this loader and the pricing engine.
-DAYS_PER_YEAR = 365.25
+# ACT/365 Fixed (calendar days / 365) for turning a maturity_date into
+# years-remaining -- the JPY market convention, and the same one JGB accrued
+# interest (models/day_count.py) and Special Phase B's JSDA check
+# (models/par_error_check.py) use. Was 365.25 (an average-year
+# approximation) until 2026-10-11; on a 30Y date that shifted maturity by
+# ~7.5 days (~0.07 per 100 of price).
+DAYS_PER_YEAR = 365.0
 
 # Non-ISO date formats _parse_date also accepts, tried in this order after
 # ISO YYYY-MM-DD fails. Every format here is unambiguous by construction --
@@ -273,7 +272,7 @@ def _resolve_valuation_date(valuation_date: str | date | None) -> date:
 
 
 def _years_between(start: date, end: date) -> float:
-    """Years from start to end under the ACT/365.25 approximation (DAYS_PER_YEAR)."""
+    """Years from start to end under ACT/365 Fixed (DAYS_PER_YEAR)."""
     return (end - start).days / DAYS_PER_YEAR
 
 

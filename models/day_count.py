@@ -17,27 +17,28 @@ convention name, specifically so a second convention could be added later
 functions or any caller of them -- not because a second convention is
 needed now.
 
-Two related but distinct outputs, both used by models/bond_pricing.py's
-accrued_interest():
+Two outputs:
 
   - day_count(start, end, convention): the ACTUAL number of calendar days
-    between two dates under `convention`. For ACT/365 this is just
-    (end - start).days -- the "Actual" in the name means real calendar
-    days are counted, with no 30-day-month approximation. This is what
-    accrued_interest() uses for both "days elapsed since the last coupon"
-    and "days in the current coupon period" -- the phase brief's own
-    formula (coupon amount x days_elapsed / days_in_period).
+    between two dates. For ACT/365 this is just (end - start).days -- real
+    calendar days, no 30-day-month approximation.
 
-  - year_fraction(start, end, convention): ACT/365's own standalone
-    definition of a year fraction -- day_count(...) / 365, a FIXED
+  - year_fraction(start, end, convention): day_count(...) / 365, a FIXED
     denominator that does NOT switch to 366 in a leap year. This is what
-    distinguishes "Actual/365 Fixed" (JGBs; also called "Actual/365
-    (Japanese)" in some references) from "Actual/Actual (ISDA)", which
-    splits a period spanning a leap year into a leap-year portion (/366)
-    and a non-leap-year portion (/365). Not used by accrued_interest()
-    itself (which prorates within a period, per the brief's formula
-    above) -- provided as the convention's own general-purpose year
-    fraction, and to make the leap-year behavior directly testable.
+    models/bond_pricing.py's accrued_interest() uses (annual coupon x
+    year_fraction), the JGB convention ("Actual/365 (Japanese)").
+
+Why not the alternatives:
+  - Actual/Actual ISDA (leap-year days / 366, others / 365) is a swap
+    convention, not used for JGBs.
+  - Actual/Actual ICMA (coupon per period x days / days in period) is the
+    government-bond convention in e.g. the US and euro area, not Japan.
+    accrued_interest() used ICMA arithmetic under an ACT/365 label until
+    2026-10-11.
+
+OPEN: whether JGB accrual counts 29 February in a leap year. Secondary
+sources disagree and no primary MOF/JSDA source was found; this module
+counts it (docs/phase_4_6a_documentation.md §6.6).
 """
 
 from __future__ import annotations

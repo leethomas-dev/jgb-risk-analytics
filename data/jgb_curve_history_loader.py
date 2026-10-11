@@ -147,10 +147,10 @@ MIN_TENORS_FOR_VALID_PULL = 5
 # check plays for a single curve.
 MIN_ROWS_FOR_VALID_PULL = 250
 
-# Same ACT/365.25 (average calendar year) approximation config/portfolio_loader.py
-# uses for "years remaining" -- redefined here rather than imported, since
-# data/ has no dependency on config/ elsewhere and this is a well-known
-# constant, not project-specific logic.
+# Average calendar year, used only to turn the lookback window (in years)
+# into a calendar cutoff -- a window length, not a pricing day count, so it
+# deliberately stays 365.25 while pricing uses ACT/365
+# (config.portfolio_loader.DAYS_PER_YEAR).
 _DAYS_PER_YEAR = 365.25
 
 

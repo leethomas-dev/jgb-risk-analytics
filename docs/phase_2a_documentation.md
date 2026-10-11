@@ -106,13 +106,13 @@ already supports that without any code changes:
   measured from — pinning it explicitly makes a validation run
   reproducible on any date, the same reason `load_jgb_curve()`'s
   `prefer_live=False` exists.
-- **The date math is a simple approximation** (calendar days ÷ 365.25),
-  not an exact bond-market day-count convention. That's deliberate: the
-  only thing this number feeds into is looking a maturity up against a
-  curve of at most 15 discrete points — a day-count-exact answer would be
-  more precise than anything downstream can actually use. A real
-  settlement/accrued-interest calculation, if ever needed, is separate,
-  unbuilt work (§4).
+- **The date math is ACT/365 Fixed** (calendar days ÷ 365), the JPY
+  market convention, matching JGB accrued interest (Phase 4.6A) and the
+  JSDA check (Special Phase B). Until 2026-10-11 it divided by 365.25, an
+  average-year approximation no JGB system uses. On a 30Y maturity date
+  that put the bond about 7.5 days short, mispricing it by about 0.07 per
+  100 (~0.45bp). The default portfolio gives `maturity_years` directly, so
+  no committed figure was affected.
 - **`issue_date` and `maturity_date` accept more than plain ISO
   `YYYY-MM-DD`.** The loader also recognizes a set of alternative formats
   that are unambiguous on their own — `YYYY/MM/DD`, a spelled-out month

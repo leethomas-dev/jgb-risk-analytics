@@ -261,7 +261,7 @@ def test_maturity_date_only_derives_years(tmp_path):
     )
     b = load_portfolio(alt_path, valuation_date="2026-08-31")[0]
 
-    expected_years = (date(2036, 8, 31) - date(2026, 8, 31)).days / 365.25
+    expected_years = (date(2036, 8, 31) - date(2026, 8, 31)).days / 365
     assert b.maturity_years == pytest.approx(expected_years)
     assert b.maturity_years == pytest.approx(10.0, abs=0.01)
     assert b.maturity_date == "2036-08-31"
@@ -316,7 +316,7 @@ def test_maturity_mismatch_within_tolerance_is_not_an_error(tmp_path):
         [_bond(maturity_years=10, maturity_date="2036-09-05", weight=1.0)],
     )
     b = load_portfolio(alt_path, valuation_date="2026-08-31")[0]
-    derived = (date(2036, 9, 5) - date(2026, 8, 31)).days / 365.25
+    derived = (date(2036, 9, 5) - date(2026, 8, 31)).days / 365
     assert abs(derived - 10.0) < MATURITY_CONSISTENCY_TOLERANCE_YEARS
     assert b.maturity_years == pytest.approx(derived)
 
@@ -350,5 +350,5 @@ def test_valuation_date_defaults_to_today(tmp_path):
         [_bond(maturity_years=None, maturity_date="2036-08-31", weight=1.0)],
     )
     b = load_portfolio(alt_path)[0]
-    expected = (date(2036, 8, 31) - date.today()).days / 365.25
+    expected = (date(2036, 8, 31) - date.today()).days / 365
     assert b.maturity_years == pytest.approx(expected)

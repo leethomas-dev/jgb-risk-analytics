@@ -5,6 +5,15 @@
 > project now discounts on the bootstrapped zero curve by default; current
 > values are in [`special_phase_a_documentation.md`](special_phase_a_documentation.md) §6.
 
+> **Day count corrected (2026-10-11):** accrued interest was labelled
+> ACT/365 but computed coupon-per-period × days ÷ days in the period,
+> which is Actual/Actual ICMA arithmetic (the US/euro government-bond
+> method), not Japan's. It now computes annual coupon × days ÷ 365, the
+> JGB convention and the formula Special Phase B's JSDA check already
+> used. Dates-to-years conversion moved from 365.25 to 365 at the same
+> time (Phase 2A). See §3. No figure in this doc changes: every accrued
+> figure shown is at the default settlement date, where accrued is zero.
+
 ## In plain English
 
 Every price this project has computed so far has been a "clean" price —
@@ -128,6 +137,13 @@ document** — a real distinction from the primary-source verification
 Phase 4.5A achieved for MOF's curve methodology (`docs/phase_4_5a_documentation.md`
 §1), and worth a validator's attention for that reason.
 
+**Why not Actual/Actual.** Two variants exist, and neither is Japan's:
+- **ISDA** (days in a leap year ÷ 366, other days ÷ 365) is a swap
+  convention, not used for JGBs.
+- **ICMA** (coupon per period × days ÷ days in the period) is the
+  government-bond convention in e.g. the US and euro area. This module
+  used ICMA's arithmetic by mistake until 2026-10-11 (§3).
+
 **Structured for one convention, extensible to more.** `day_count.py` is a
 small registry keyed by convention name (`_YEAR_LENGTH_DAYS`), specifically
 so a second convention (30/360, Actual/Actual ICMA) could be added later —
@@ -136,35 +152,42 @@ function's signature or any caller. Only ACT/365 is implemented, since
 it's the only one this project needs; the brief was explicit not to build
 conventions not required.
 
-**Two related, but genuinely different, outputs.** `day_count.py` exposes
-both `day_count()` (actual days between two dates) and `year_fraction()`
-(days / 365, ACT/365's own standalone year-fraction definition). Only
-`day_count()` is used by `accrued_interest()` — see §3 for why.
+**Two outputs.** `day_count.py` exposes `day_count()` (actual days between
+two dates) and `year_fraction()` (days ÷ 365). `accrued_interest()` uses
+`year_fraction()` (§3).
 
 ---
 
-## 3. Accrued interest: the formula, and why it isn't `year_fraction()`
+## 3. Accrued interest: the formula
 
-The phase brief's own formula: *"coupon amount prorated by days elapsed
-since the last coupon date, over days in the coupon period, per the day
-count."* This is:
+```
+accrued = face_value * coupon_rate * days_elapsed / 365
+```
+
+`days_elapsed` is actual calendar days since the current period started.
+The denominator is a fixed 365, not the period's own length, so accrued
+on the last day of a 183-day period is slightly **more** than one
+period's coupon (183/365 > 1/2). That is the convention, not an error.
+This is the same formula `models/par_error_check.py` uses against real
+JSDA prices (Special Phase B).
+
+**Correction, 2026-10-11.** As first built, this phase followed the
+phase brief's wording (*"coupon amount prorated by days elapsed since the
+last coupon date, over days in the coupon period"*) and computed:
 
 ```
 accrued = (face_value * coupon_rate / freq) * (days_elapsed / days_in_period)
 ```
 
-— both `days_elapsed` and `days_in_period` counted via `day_count.day_count()`
-(actual calendar days), **not** via `year_fraction()`. These give
-different numbers in general: `year_fraction()`'s denominator is a fixed
-365 regardless of how long the *actual* coupon period is (which varies,
-181–184 days, with the calendar); the formula above's denominator is that
-period's own actual length. The brief's formula is the standard
-bond-market accrual convention (prorate within the period the bond is
-actually in) — implemented here literally, not approximated via a
-fixed-365 shortcut. `year_fraction()` remains available in `day_count.py`
-as the convention's own general-purpose definition (and is what
-`tests/test_day_count.py`'s leap-year check exercises directly), but
-`accrued_interest()` does not call it.
+That is Actual/Actual ICMA arithmetic: the US/euro government-bond method,
+not Japan's. It was labelled ACT/365 throughout, and the original version
+of this section defended it as "the standard bond-market accrual
+convention". The two formulas differ by at most about 0.3% of the accrued
+amount (182 or 183 days per period against 182.5), a few thousandths per
+100 of price. It was found by checking the label against the arithmetic
+while preparing to explain the convention, not by a failing test.
+`test_accrued_interest_divides_by_365_not_by_the_period_length` now pins
+the convention.
 
 **The coupon calendar accrued interest runs on.** Real coupon dates don't
 exist anywhere in this project's data — the illustrative portfolio
@@ -174,14 +197,14 @@ builds a synthetic-but-consistent calendar directly from
 `price_bond`'s own cash-flow schedule (`_cash_flow_schedule`, factored out
 of `price_bond` unchanged specifically for this reuse): each cash-flow
 time (a year offset from `valuation_date`) becomes a calendar date via
-`valuation_date + round(t * DAYS_PER_YEAR)` days, using the exact same
-`DAYS_PER_YEAR = 365.25` constant `config/portfolio_loader.py` already
-uses for the reverse conversion (a real `maturity_date` → years remaining,
-Phase 2A §2) — reused here rather than a second, differently-tuned
-approximation. This means a coupon "period" in this project is
-consistently ~182–183 days long by construction, not the real ~181–184
-day range a genuine calendar would produce; disclosed in §6 as a real,
-bounded approximation, not a precision claim.
+`valuation_date + round(t * DAYS_PER_YEAR)` days, using the same
+`DAYS_PER_YEAR = 365` (ACT/365; 365.25 before 2026-10-11) that
+`config/portfolio_loader.py` uses for the reverse conversion (a real
+`maturity_date` → years remaining, Phase 2A §2). Coupon periods are
+therefore 182 or 183 days by construction, not the real ~181–184 day
+range a genuine calendar would produce, and over 30 years the synthetic
+dates fall about 8 days earlier than the same calendar day. Disclosed in
+§6 as a bounded approximation, not a precision claim.
 
 ---
 
@@ -270,12 +293,10 @@ fact (§5).** If JGBs do have an ex-coupon window this project's search
 didn't surface, accrued interest computed by this module would be wrong
 in sign for trades settling inside that window, each period.
 
-**6.3 The coupon calendar is synthetic, built from `DAYS_PER_YEAR = 365.25`,
+**6.3 The coupon calendar is synthetic, built from `DAYS_PER_YEAR = 365`,
 not real per-bond coupon dates (§3).** The illustrative portfolio has no
-real coupon dates to be more precise than — this is a modeling
-simplification consistent with Phase 2A's own approximation for the
-reverse conversion, not a new source of imprecision this phase introduced
-independently. A real-bond portfolio (Phase 2A §2, not built yet) would
+real coupon dates to be more precise than; this matches Phase 2A's
+reverse conversion rather than adding a new source of imprecision. A real-bond portfolio (Phase 2A §2, not built yet) would
 supply real coupon dates this module could use directly instead.
 
 **6.4 `valuation_date` consistency between this module and a loaded
@@ -286,6 +307,14 @@ mismatched dates to `load_portfolio(valuation_date=...)` and to
 **6.5 Only ACT/365 is implemented.** `day_count_convention` is a genuine
 parameter, but passing anything else raises — no other convention has
 been built, since none is needed yet (§2).
+
+**6.6 Whether JGB accrual counts 29 February is unverified.** This module
+counts it (a settlement spanning 29 February accrues one more day).
+Secondary sources disagree on whether the Japanese convention does; no
+primary MOF/JSDA source was found (checked 2026-10-11). The effect is at
+most one day's accrual, coupon ÷ 365 (about 0.01 per 100 at a 3.5%
+coupon), once every four years. Confirm against a JSDA primary source
+before the SR 11-7 report.
 
 ---
 

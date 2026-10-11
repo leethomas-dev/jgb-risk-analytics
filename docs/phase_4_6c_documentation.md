@@ -109,7 +109,8 @@ Each bond's cash-flow times (`cash_flow_schedule`, years from the
 valuation date) are converted to real calendar dates the same way Phase
 4.6A's `accrued_interest()` already does:
 `valuation_date + round(years * DAYS_PER_YEAR)` days
-(`config.portfolio_loader.DAYS_PER_YEAR = 365.25`) — reimplemented as the
+(`config.portfolio_loader.DAYS_PER_YEAR = 365`, ACT/365; 365.25 before
+2026-10-11) — reimplemented as the
 same one-line formula here rather than importing `bond_pricing`'s private
 `_coupon_boundaries()` (which returns period *boundaries* for accrued-
 interest lookups, including the valuation-date anchor itself — a
@@ -245,7 +246,7 @@ Same disclaimer as every other portfolio-level currency figure in this
 project (Phase 3B §1.1) — this is not real cash for a real book.
 
 **7.2 Calendar dates are a synthetic approximation** (§3), built from
-`DAYS_PER_YEAR = 365.25` rather than real per-bond coupon dates — the
+`DAYS_PER_YEAR = 365` rather than real per-bond coupon dates — the
 same limitation Phase 4.6A's accrued interest already carries, for the
 same reason (the illustrative portfolio has no real coupon dates to be
 more precise than).
