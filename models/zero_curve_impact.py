@@ -47,7 +47,7 @@ for the same reason: it keeps every one of the par curve's own tenors in
 the comparison rather than dropping whichever ones the zero curve's
 coarser native grid didn't happen to share.
 
-PART 2 -- DO NS/SVENSSON'S LOADINGS RESEMBLE PCA'S EIGENVECTORS?
+PART 2 -- DO NELSON-SIEGEL'S SHAPES RESEMBLE PCA'S LOADINGS?
 Nelson-Siegel's three beta terms are conventionally read as level, slope,
 and curvature -- the same reading PCA's own first three components get
 (models.pca's own docstring). One is a functional form IMPOSED on the
@@ -325,7 +325,8 @@ def plot_par_zero_fitted_curve(
 
 
 # ---------------------------------------------------------------------------
-# Part 2: NS/Svensson loading shapes vs. PCA loadings
+# Part 2: Nelson-Siegel shapes vs. PCA loadings (NS only -- Svensson's
+# second hump has no PCA counterpart; docs/phase_4_5c_documentation.md §3)
 # ---------------------------------------------------------------------------
 
 # (beta name, PCA component) pairs this project reads as level/slope/

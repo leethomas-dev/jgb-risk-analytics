@@ -41,10 +41,14 @@ anywhere in this project needed to change. `models/zero_curve_impact.py`
 difference in price, effective duration, and DV01, plus a per-tenor
 KRD/DV01 comparison.
 
-**C2 — NS/Svensson vs. PCA loadings.** `models/zero_curve_impact.py`
+**C2 — Nelson-Siegel vs. PCA loadings.** `models/zero_curve_impact.py`
 also compares Nelson-Siegel's fitted basis-function shapes (Part B)
 against PCA's own loading vectors (Phase 4B) via cosine similarity, with
-explicit sign-alignment handling.
+explicit sign-alignment handling. Svensson isn't compared: NS's three
+shapes pair one-to-one with PC1–PC3, while Svensson's second hump has no
+PCA counterpart and its extra terms aren't stable from fit to fit
+(`docs/phase_4_5b_documentation.md` §6, §8.4–8.5). Svensson's `tau1` appears only
+as one of the tau values tried in §3.3.
 
 **Files touched:** `models/bond_pricing.py` (extended — `price_bond`
 gains a zero-curve discounting branch), `models/key_rate_duration.py`
