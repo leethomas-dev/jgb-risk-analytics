@@ -167,11 +167,13 @@ def test_matches_closed_form_flat_yield_price_semiannual():
 
 
 def test_matches_closed_form_flat_yield_price_annual_frequency():
-    # Confirms freq is genuinely parameterized, not hardcoded to 2.
+    # Confirms freq is genuinely parameterized, not hardcoded to 2. The
+    # closed form compounds at the bond's own freq, so the curve is read
+    # that way too (default is the market curve's semiannual convention).
     face, coupon_rate, maturity, freq = 100.0, 0.03, 5.0, 1
     flat_yield = 0.02
     curve = _flat_curve(flat_yield)
-    price = price_bond(face, coupon_rate, maturity, curve, freq=freq)
+    price = price_bond(face, coupon_rate, maturity, curve, freq=freq, compounding_freq=freq)
     expected = _closed_form_flat_yield_price(face, coupon_rate, maturity, flat_yield, freq)
     assert price == pytest.approx(expected)
 
@@ -180,7 +182,7 @@ def test_matches_closed_form_flat_yield_price_quarterly_frequency():
     face, coupon_rate, maturity, freq = 100.0, 0.04, 3.0, 4
     flat_yield = 0.03
     curve = _flat_curve(flat_yield)
-    price = price_bond(face, coupon_rate, maturity, curve, freq=freq)
+    price = price_bond(face, coupon_rate, maturity, curve, freq=freq, compounding_freq=freq)
     expected = _closed_form_flat_yield_price(face, coupon_rate, maturity, flat_yield, freq)
     assert price == pytest.approx(expected)
 
@@ -333,9 +335,9 @@ def test_zero_basis_reproduces_bootstraps_own_self_consistency_result():
 
 def test_zero_basis_reprices_to_par_consistently_when_freq_matches_end_to_end():
     # Both the zero curve's own bootstrap AND the reprice use the SAME
-    # freq -- the scenario that actually matters in practice (models/
-    # bond_pricing.py's own docstring: "MUST match the freq the zero
-    # curve was itself bootstrapped with"). The isolated compounding-
+    # freq. A zero curve bootstrapped at a non-default convention must say
+    # so via compounding_freq (price_bond's default reads every curve at
+    # the MOF curve's semiannual convention). The isolated compounding-
     # mismatch case is covered directly at the bootstrap level
     # (tests/test_bootstrap.py::test_freq_matching_between_bootstrap_and_
     # reprice_is_required_for_par), not duplicated here.
@@ -345,7 +347,7 @@ def test_zero_basis_reprices_to_par_consistently_when_freq_matches_end_to_end():
     row = par_curve.loc[par_curve["maturity_years"] == 10.0].iloc[0]
     for freq in (1, 2, 4):
         zero_curve = bootstrap_zero_curve(par_curve, freq=freq)
-        price = price_bond(100.0, float(row["yield"]), 10.0, zero_curve, freq=freq)
+        price = price_bond(100.0, float(row["yield"]), 10.0, zero_curve, freq=freq, compounding_freq=freq)
         assert price == pytest.approx(100.0, abs=1e-6), f"freq={freq}"
 
 
@@ -621,7 +623,7 @@ def test_discount_factors_at_reproduces_price_bond_on_a_par_curve():
     cash_flows = np.full(n_periods, face * coupon / freq)
     cash_flows[-1] += face
 
-    factors = discount_factors_at(curve, cash_flow_times, freq=freq)
+    factors = discount_factors_at(curve, cash_flow_times)
     reconstructed_price = float(np.sum(cash_flows * factors))
 
     assert reconstructed_price == pytest.approx(price_bond(face, coupon, maturity, curve, freq=freq))
@@ -637,7 +639,7 @@ def test_discount_factors_at_reproduces_price_bond_on_a_zero_curve():
     cash_flows = np.full(n_periods, face * coupon / freq)
     cash_flows[-1] += face
 
-    factors = discount_factors_at(zero_curve, cash_flow_times, freq=freq)
+    factors = discount_factors_at(zero_curve, cash_flow_times)
     reconstructed_price = float(np.sum(cash_flows * factors))
 
     assert reconstructed_price == pytest.approx(price_bond(face, coupon, maturity, zero_curve, freq=freq))
@@ -699,3 +701,50 @@ def test_zero_basis_matches_pricing_off_the_bootstrapped_curve_directly():
     for c in (curve, bumped, curve):
         expected = price_bond(100.0, 0.03, 25.0, bootstrap_zero_curve(c))
         assert price_bond(100.0, 0.03, 25.0, c) == pytest.approx(expected, rel=1e-12)
+
+
+# --------------------------------------------------------------------------
+# Coupon frequency vs. curve compounding (2026-10-12): a bond's freq sets
+# only its cash-flow dates; curve rates are always turned into discount
+# factors at the curve's own convention (MOF: semiannual compound).
+# --------------------------------------------------------------------------
+
+
+def _annual_cash_flows(face: float, coupon: float, maturity: int):
+    times = np.arange(1, maturity + 1, dtype=float)
+    cash_flows = np.full(maturity, face * coupon)
+    cash_flows[-1] += face
+    return times, cash_flows
+
+
+def test_annual_bond_on_zero_basis_uses_the_one_semiannual_zero_curve():
+    from models.bootstrap import bootstrap_zero_curve, discount_factor_at
+
+    par_curve = load_jgb_curve(prefer_live=False)
+    times, cash_flows = _annual_cash_flows(100.0, 0.035, 30)
+    zero_curve = bootstrap_zero_curve(par_curve, freq=2)
+    expected = float(np.sum(cash_flows * discount_factor_at(zero_curve, times, freq=2)))
+
+    assert price_bond(100.0, 0.035, 30, par_curve, freq=1) == pytest.approx(expected, rel=1e-12)
+
+    # The old behaviour re-bootstrapped MOF's semiannual yields as if they
+    # were annual ones -- a materially different price for the same bond.
+    annual_zero = bootstrap_zero_curve(par_curve, freq=1)
+    old = float(np.sum(cash_flows * discount_factor_at(annual_zero, times, freq=1)))
+    assert abs(expected - old) > 0.5
+
+
+def test_annual_bond_on_par_basis_compounds_par_yields_semiannually():
+    par_curve = load_jgb_curve(prefer_live=False)
+    times, cash_flows = _annual_cash_flows(100.0, 0.035, 30)
+    yields = curve_yield_at(par_curve, times)
+    expected = float(np.sum(cash_flows / (1.0 + yields / 2) ** (2 * times)))
+
+    price = price_bond(100.0, 0.035, 30, par_curve, freq=1, basis="par")
+    assert price == pytest.approx(expected, rel=1e-12)
+
+
+def test_compounding_freq_must_be_positive():
+    curve = load_jgb_curve(prefer_live=False)
+    with pytest.raises(ValueError, match="compounding_freq"):
+        price_bond(100.0, 0.02, 10.0, curve, compounding_freq=0)

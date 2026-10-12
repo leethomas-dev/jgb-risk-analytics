@@ -221,6 +221,11 @@ to `discount_factor_at` moves a bond that should reprice to exactly 100
 to 100.126 instead — a small-looking number that is nonetheless the
 entire class of bug this design decision exists to prevent.
 
+*2026-10-12:* the convention is now fixed project-wide as the curve's own
+(semiannual, MOF), not the frequency of whichever bond is being priced —
+`price_bond` reads every curve at it by default (`compounding_freq`;
+`special_phase_a_documentation.md` §3.3).
+
 ### 2.5 `zero_rate_at` / `discount_factor_at` / `price_via_zero_curve`
 
 `zero_rate_at` is the zero-curve analogue of `curve_yield_at` — same

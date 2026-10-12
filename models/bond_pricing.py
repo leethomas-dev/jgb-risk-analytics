@@ -62,6 +62,20 @@ single-flat-yield definitions (YTM, modified duration, convexity), where
 the two bases coincide exactly anyway. Column auto-detection still
 applies: a 'zero_rate' curve is discounted as given.
 
+COUPON FREQUENCY vs. CURVE COMPOUNDING (2026-10-12). Two different things:
+a bond's coupon frequency (`freq`) sets WHEN its cash flows fall; the
+curve's compounding convention sets how a rate read off the curve becomes
+a discount factor. MOF quotes its yields as semiannual compound
+(docs/phase_4_5a_documentation.md §1), so the curve is always bootstrapped
+and discounted at CURVE_COMPOUNDING_FREQ, whatever the bond's own
+frequency -- one zero curve per par curve, shared by every bond. An annual
+bond just has cash flows at 1, 2, 3... years, discounted off the same
+curve. Previously one `freq` did both jobs, so an annual bond re-read
+MOF's semiannual yields as annual ones (~1.6% off in the 30Y discount
+factor). Identical results for semiannual bonds, i.e. today's portfolio.
+Flat-yield definitions (YTM, convexity) pass compounding_freq=freq
+explicitly, since a bond's own yield is quoted at its own frequency.
+
 Reads the portfolio and curve through their own loaders -- never hardcodes
 either. Cheap to call repeatedly against a modified curve on purpose:
 KRD, DV01, and the ultra-long profile all work by bumping one curve row
@@ -100,7 +114,12 @@ PAR_BASIS = "par"
 ZERO_BASIS = "zero"
 DEFAULT_BASIS = ZERO_BASIS
 
-# Bootstraps kept per distinct (curve, freq). A KRD run reprices every
+# The market curve's own compounding convention: MOF quotes semiannual
+# compound yields. A property of the curve, not of any bond (module
+# docstring "COUPON FREQUENCY vs. CURVE COMPOUNDING").
+CURVE_COMPOUNDING_FREQ = 2
+
+# Bootstraps kept per distinct (curve, compounding). A KRD run reprices every
 # bond against the same few bumped curves, so this turns ~190 bootstraps
 # into ~30. Small: entries are one curve each.
 _BOOTSTRAP_CACHE_SIZE = 256
@@ -161,26 +180,32 @@ def _resolve_basis(basis: str | None) -> str:
 
 
 @lru_cache(maxsize=_BOOTSTRAP_CACHE_SIZE)
-def _cached_zero_curve(maturities: tuple, yields: tuple, freq: int) -> pd.DataFrame:
+def _cached_zero_curve(maturities: tuple, yields: tuple, compounding_freq: int) -> pd.DataFrame:
     # Local import: models.bootstrap imports curve_yield_at from this module.
     from models.bootstrap import bootstrap_zero_curve
 
     par_curve = pd.DataFrame({"maturity_years": maturities, "yield": yields})
-    return bootstrap_zero_curve(par_curve, freq=freq)
+    return bootstrap_zero_curve(par_curve, freq=compounding_freq)
 
 
-def zero_curve_for(par_curve: pd.DataFrame, freq: int = 2) -> pd.DataFrame:
+def zero_curve_for(par_curve: pd.DataFrame, compounding_freq: int = CURVE_COMPOUNDING_FREQ) -> pd.DataFrame:
     """The zero curve a par curve is discounted on under the zero basis --
-    models.bootstrap.bootstrap_zero_curve(par_curve, freq), cached. Callers
-    must not modify the returned frame (it's shared)."""
+    models.bootstrap.bootstrap_zero_curve at the curve's own compounding
+    convention (never a bond's coupon frequency), cached. Callers must not
+    modify the returned frame (it's shared)."""
     return _cached_zero_curve(
         tuple(par_curve["maturity_years"].astype(float)),
         tuple(par_curve["yield"].astype(float)),
-        int(freq),
+        int(compounding_freq),
     )
 
 
-def discount_factors_at(curve: pd.DataFrame, times, freq: int = 2, basis: str | None = None) -> np.ndarray:
+def discount_factors_at(
+    curve: pd.DataFrame,
+    times,
+    basis: str | None = None,
+    compounding_freq: int | None = None,
+) -> np.ndarray:
     """Discount factor(s) for arbitrary time(s), auto-detected from
     `curve`'s own columns -- exactly price_bond's own "TWO DISCOUNTING
     BASES" logic (module docstring), factored out here (Phase 4.6C) so any
@@ -203,8 +228,15 @@ def discount_factors_at(curve: pd.DataFrame, times, freq: int = 2, basis: str | 
     "par" discounts straight off the par yields. A 'zero_rate' curve is
     already a zero curve and is discounted as given; asking for "par" on
     one is an error rather than a silent reinterpretation.
+
+    compounding_freq: how a rate is turned into a discount factor. None
+    (default) = the curve's own convention, CURVE_COMPOUNDING_FREQ. Not a
+    bond's coupon frequency (module docstring).
     """
     resolved = _resolve_basis(basis)
+    freq = CURVE_COMPOUNDING_FREQ if compounding_freq is None else compounding_freq
+    if freq <= 0:
+        raise ValueError(f"compounding_freq must be positive, got {freq}")
     # Local import: avoids a module-level circular import, since
     # models.bootstrap itself imports curve_yield_at from this module.
     from models.bootstrap import discount_factor_at
@@ -228,6 +260,7 @@ def price_bond(
     curve: pd.DataFrame,
     freq: int = 2,
     basis: str | None = None,
+    compounding_freq: int | None = None,
 ) -> float:
     """Price a bond by discounting each cash flow at the rate the curve
     implies for that cash flow's own maturity.
@@ -252,11 +285,15 @@ def price_bond(
         docstring "TWO DISCOUNTING BASES") -- any tenor grid, any number
         of rows >= 1, same as before either way.
     freq : coupon payments per year (2 = semiannual, the JGB default).
-        For the zero-curve basis, MUST match the freq the zero curve was
-        itself bootstrapped with (docs/phase_4_5a_documentation.md §1.4).
-        A par curve priced on the zero basis is bootstrapped at this freq.
+        Sets the cash-flow dates only -- not how rates are compounded.
     basis : "zero" (default) or "par" for a 'yield'-column curve -- see
         discount_factors_at and the module docstring (Special Phase A).
+    compounding_freq : how curve rates become discount factors. None
+        (default) = the curve's own convention, CURVE_COMPOUNDING_FREQ;
+        an explicit zero curve is assumed bootstrapped at it. Pass `freq`
+        only for a bond's own flat yield (YTM, convexity), which is quoted
+        at the bond's frequency. Module docstring "COUPON FREQUENCY vs.
+        CURVE COMPOUNDING".
 
     Returns
     -------
@@ -278,7 +315,9 @@ def price_bond(
     cash_flows = np.full(n_periods, coupon_payment, dtype=float)
     cash_flows[-1] += face_value  # final period also redeems face value
 
-    discount_factors = discount_factors_at(curve, cash_flow_times, freq=freq, basis=basis)
+    discount_factors = discount_factors_at(
+        curve, cash_flow_times, basis=basis, compounding_freq=compounding_freq
+    )
     return float(np.sum(cash_flows * discount_factors))
 
 
@@ -295,12 +334,10 @@ def price_portfolio(
     reusable against a curve a caller repeatedly bumps and reprices.
 
     freq : None (default) prices each bond at its OWN bond.freq -- a
-        portfolio can mix payment frequencies across bonds. Pass an
-        explicit int to override every bond in the portfolio to that one
-        shared frequency instead -- needed, for instance, when discounting
-        against a zero curve, which requires the SAME freq it was
-        bootstrapped with for every bond priced against it (see
-        models.zero_curve_impact's own docstring).
+        portfolio can mix payment frequencies across bonds, all discounted
+        off the same curve (module docstring "COUPON FREQUENCY vs. CURVE
+        COMPOUNDING"). Pass an explicit int to override every bond to one
+        shared frequency instead.
 
     Returns a DataFrame with one row per bond, in portfolio order: name,
     maturity_years, coupon_rate, weight, price. A portfolio-level weighted
@@ -510,8 +547,7 @@ def accrued_interest_portfolio(
     (df.weight * df.accrued_interest).sum().
 
     freq : None (default) uses each bond's OWN bond.freq; an explicit int
-    overrides every bond to that one shared frequency (see
-    price_portfolio's own docstring for why that override exists)."""
+    overrides every bond to that one shared frequency."""
     rows = [
         {
             "name": bond.name,

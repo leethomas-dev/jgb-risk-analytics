@@ -116,7 +116,8 @@ def yield_to_maturity(
     ytm = implied_ytm(face_value, coupon_rate, maturity_years, price, freq=freq)
 
     reprice = price_bond(
-        face_value, coupon_rate, maturity_years, _flat_curve(ytm, maturity_years), freq=freq, basis=PAR_BASIS
+        face_value, coupon_rate, maturity_years, _flat_curve(ytm, maturity_years),
+        freq=freq, basis=PAR_BASIS, compounding_freq=freq,
     )
     if abs(reprice - price) > YTM_VERIFY_TOLERANCE:
         raise RuntimeError(
@@ -199,9 +200,10 @@ def convexity(
     up_curve = _flat_curve(ytm + bump_size, maturity_years)
     down_curve = _flat_curve(ytm - bump_size, maturity_years)
 
-    p0 = price_bond(face_value, coupon_rate, maturity_years, base_curve, freq=freq, basis=PAR_BASIS)
-    p_up = price_bond(face_value, coupon_rate, maturity_years, up_curve, freq=freq, basis=PAR_BASIS)
-    p_down = price_bond(face_value, coupon_rate, maturity_years, down_curve, freq=freq, basis=PAR_BASIS)
+    # A bond's own yield is compounded at its own frequency, not the curve's.
+    p0 = price_bond(face_value, coupon_rate, maturity_years, base_curve, freq=freq, basis=PAR_BASIS, compounding_freq=freq)
+    p_up = price_bond(face_value, coupon_rate, maturity_years, up_curve, freq=freq, basis=PAR_BASIS, compounding_freq=freq)
+    p_down = price_bond(face_value, coupon_rate, maturity_years, down_curve, freq=freq, basis=PAR_BASIS, compounding_freq=freq)
 
     return (p_up + p_down - 2.0 * p0) / (p0 * bump_size**2)
 

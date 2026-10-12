@@ -161,12 +161,13 @@ import numpy as np
 import pandas as pd
 
 from data.jgb_curve_loader import load_jgb_curve
-from models.bond_pricing import curve_yield_at
+from models.bond_pricing import CURVE_COMPOUNDING_FREQ, curve_yield_at
 
-# Semiannual -- matches bond_pricing.price_bond's own default. See module
-# docstring, design decision 3: this MUST match whatever freq price_bond
-# is later called with against this zero curve.
-DEFAULT_BOOTSTRAP_FREQ = 2
+# Semiannual -- the MOF curve's own compounding convention. See module
+# docstring, design decision 3: a zero curve must be read at the same
+# compounding it was bootstrapped with, which price_bond now does by
+# default (bond_pricing "COUPON FREQUENCY vs. CURVE COMPOUNDING").
+DEFAULT_BOOTSTRAP_FREQ = CURVE_COMPOUNDING_FREQ
 
 # A cash flow maturity below this is a money-market instrument (no
 # intermediate coupon), used directly as a zero rate rather than
@@ -354,12 +355,14 @@ def implied_ytm(
     """
     from models.bond_pricing import price_bond  # local import: avoids a
 
-    # module-level cycle (bond_pricing doesn't import bootstrap, but this
-    # keeps the dependency direction explicit and one-way).
+    # module-level cycle: bond_pricing imports bootstrap locally too).
 
     def _price_at_flat_yield(y: float) -> float:
         flat_curve = pd.DataFrame({"maturity_years": [0.25, maturity_years + 1.0], "yield": [y, y]})
-        return price_bond(face_value, coupon_rate, maturity_years, flat_curve, freq=freq, basis="par")
+        # A bond's own yield is compounded at its own frequency.
+        return price_bond(
+            face_value, coupon_rate, maturity_years, flat_curve, freq=freq, basis="par", compounding_freq=freq
+        )
 
     lo, hi = -0.02, 0.30  # wide enough for any plausible JGB yield, including negative-rate years
     f_lo, f_hi = _price_at_flat_yield(lo) - target_price, _price_at_flat_yield(hi) - target_price

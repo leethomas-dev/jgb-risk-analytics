@@ -143,12 +143,11 @@ JGBs) and each bond prices correctly at its own.
 - **Every portfolio-level function still accepts an explicit `freq`
   override** (`price_portfolio(portfolio, curve, freq=2)`, etc.) that
   forces every bond in the portfolio to that one shared frequency instead
-  of each bond's own. This exists because at least one consumer *needs*
-  it: `models/zero_curve_impact.py`'s `compute_par_vs_zero_impact`
-  requires every bond to be discounted at the *same* frequency the zero
-  curve it's comparing against was itself bootstrapped with — per-bond
-  freq would be actively wrong there, not just unused (see that module's
-  own docstring).
+  of each bond's own. (It was once required by Phase 4.5C's par-vs-zero
+  comparison; since 2026-10-12 a bond's frequency sets only its cash-flow
+  dates and the curve is always compounded at its own semiannual
+  convention, so mixed frequencies work everywhere —
+  `special_phase_a_documentation.md` §3.3.)
 - **Validated the same way `coupon_rate` is:** non-positive or above a
   plausibility ceiling (12, monthly) both raise, catching a data-entry
   mistake rather than silently accepting an implausible frequency.

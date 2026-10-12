@@ -103,7 +103,7 @@ def _bond_cash_flows(
     principal = np.zeros(n_periods)
     principal[-1] = bond.face_value * bond.weight  # only the final period redeems face value
 
-    discount_factors = discount_factors_at(curve, cash_flow_times, freq=freq, basis=basis)
+    discount_factors = discount_factors_at(curve, cash_flow_times, basis=basis)
 
     return pd.DataFrame(
         {

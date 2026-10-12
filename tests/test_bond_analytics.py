@@ -322,3 +322,10 @@ def test_bond_analytics_portfolio_effective_duration_matches_key_rate_duration_m
     for bond, eff_dur in zip(portfolio, results["effective_duration"].iloc[:-1]):
         expected = effective_duration_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve)
         assert eff_dur == pytest.approx(expected)
+
+
+def test_ytm_of_an_annual_bond_is_quoted_at_annual_compounding():
+    # A bond's own yield is compounded at its own frequency, not the market
+    # curve's (models.bond_pricing "COUPON FREQUENCY vs. CURVE
+    # COMPOUNDING"): an annual-pay bond priced at par yields its coupon.
+    assert yield_to_maturity(100.0, 0.03, 10.0, 100.0, freq=1) == pytest.approx(0.03, abs=1e-9)

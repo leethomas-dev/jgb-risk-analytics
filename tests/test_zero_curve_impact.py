@@ -237,3 +237,21 @@ def test_plot_loadings_comparison_saves_a_real_png(tmp_path):
     assert returned == output_path
     assert output_path.exists()
     assert output_path.stat().st_size > 0
+
+
+def test_mixed_frequency_portfolio_prices_each_bond_at_its_own_freq():
+    # One zero curve (semiannual compounding) serves every bond; each bond
+    # keeps its own coupon frequency, on both bases.
+    import dataclasses
+
+    from models.bond_pricing import price_bond
+
+    portfolio = _portfolio()
+    portfolio[-1] = dataclasses.replace(portfolio[-1], freq=1)
+    annual = portfolio[-1]
+    par_curve = _par_curve()
+
+    row = compute_par_vs_zero_impact(portfolio, par_curve).per_bond.set_index("name").loc[annual.name]
+    args = (annual.face_value, annual.coupon_rate, annual.maturity_years)
+    assert row["zero_price"] == pytest.approx(price_bond(*args, par_curve, freq=1), rel=1e-12)
+    assert row["par_price"] == pytest.approx(price_bond(*args, par_curve, freq=1, basis="par"), rel=1e-12)

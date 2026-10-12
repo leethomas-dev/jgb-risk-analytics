@@ -155,10 +155,20 @@ caller had to opt in; `"par"` keeps the original formula bit-for-bit.
 
 ### 3.3 Bootstrap frequency and caching
 
-A par curve is bootstrapped at the frequency of the bond being priced
-(`freq`), so the discounting always matches the zero curve's own
-compounding (Phase 4.5A §1.4) — including for a portfolio mixing
-frequencies (one cached zero curve per frequency). Bootstraps are cached
+A par curve is bootstrapped at its own compounding convention —
+semiannual, how MOF quotes its yields (Phase 4.5A §1) — and every bond is
+discounted off that one zero curve, whatever its coupon frequency. A
+bond's `freq` sets only when its cash flows fall.
+
+*Corrected 2026-10-12.* This phase originally bootstrapped at the
+frequency of the bond being priced (one zero curve per frequency). That
+re-read MOF's semiannual yields as annual ones for an annual-pay bond:
+the 30Y discount factor came out 1.6% different (0.2708 vs. 0.2666 on the
+snapshot), so the same future yen had two values depending on which bond
+asked. Coupon frequency (a property of the bond) and compounding (a
+property of the curve) are now separate settings (`compounding_freq` on
+`price_bond`). No figure in this project changes: every bond is
+semiannual, where the two settings coincide. Bootstraps are cached
 per distinct curve (`lru_cache`, 256 entries): a portfolio KRD run
 reprices six bonds against the same ~31 bumped curves, so ~190
 bootstraps become ~31. Cost on the dashboard's per-edit risk

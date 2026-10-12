@@ -107,8 +107,8 @@ import pandas as pd
 from config.portfolio_loader import Bond, load_portfolio
 from data.jgb_curve_history_loader import load_jgb_curve_history
 from data.jgb_curve_loader import load_jgb_curve
-from models.bootstrap import DEFAULT_BOOTSTRAP_FREQ, bootstrap_zero_curve, zero_rate_at
-from models.bond_pricing import PAR_BASIS, price_bond
+from models.bootstrap import bootstrap_zero_curve, zero_rate_at
+from models.bond_pricing import CURVE_COMPOUNDING_FREQ, PAR_BASIS, price_bond
 from models.curve_fitting import (
     NelsonSiegelFitResult,
     SvenssonFitResult,
@@ -208,7 +208,7 @@ class ParVsZeroImpactResult:
 def compute_par_vs_zero_impact(
     portfolio: list[Bond],
     par_curve: pd.DataFrame,
-    freq: int = DEFAULT_BOOTSTRAP_FREQ,
+    freq: int | None = None,
     bump_size: float = DEFAULT_BUMP_SIZE,
 ) -> ParVsZeroImpactResult:
     """Reprice `portfolio` against `par_curve` and its own bootstrapped
@@ -221,33 +221,29 @@ def compute_par_vs_zero_impact(
     models.dv01.dv01_bond/dv01_by_tenor_portfolio, called once per curve
     basis (module docstring).
 
-    freq : deliberately a SINGLE required frequency for the whole
-    portfolio here, NOT each bond's own bond.freq (contrast
-    key_rate_duration_portfolio/dv01_by_tenor_portfolio/price_portfolio,
-    which default to per-bond freq -- see their own docstrings). This
-    function's whole comparison only makes sense if every bond is
-    discounted at the SAME freq the zero curve was itself bootstrapped
-    with (bootstrap_zero_curve(par_curve, freq=freq) just below) -- a
-    bond priced at a different freq than that would be internally
-    inconsistent with the zero rates it's being discounted against,
-    silently producing a wrong par-vs-zero comparison rather than a
-    genuine one. If this project's portfolio ever mixes payment
-    frequencies across bonds, this function would need its own
-    resolution for that (e.g. a separate zero curve per distinct freq
-    present), not a switch to per-bond freq.
+    freq : None (default) prices each bond at its own bond.freq; an
+    explicit int overrides every bond. The zero curve is bootstrapped once,
+    at the curve's own compounding convention (CURVE_COMPOUNDING_FREQ),
+    and both sides discount at that convention -- so for each bond the
+    par and zero prices share the same cash flows and the same
+    compounding, and differ only in the rate used. (Until 2026-10-12 this
+    took one shared freq for every bond, because a single `freq` set both
+    the cash-flow dates and the compounding; models.bond_pricing module
+    docstring "COUPON FREQUENCY vs. CURVE COMPOUNDING".)
     """
-    zero_curve = bootstrap_zero_curve(par_curve, freq=freq)
+    zero_curve = bootstrap_zero_curve(par_curve, freq=CURVE_COMPOUNDING_FREQ)
     aligned_zero = _aligned_zero_curve(par_curve, zero_curve)
 
     rows = []
     for bond in portfolio:
         args = (bond.face_value, bond.coupon_rate, bond.maturity_years)
-        par_price = price_bond(*args, par_curve, freq=freq, basis=PAR_BASIS)
-        zero_price = price_bond(*args, zero_curve, freq=freq)
-        par_duration = effective_duration_bond(*args, par_curve, freq=freq, bump_size=bump_size, basis=PAR_BASIS)
-        zero_duration = effective_duration_bond(*args, zero_curve, freq=freq, bump_size=bump_size)
-        par_dv01 = dv01_bond(*args, par_curve, freq=freq, bump_size=bump_size, basis=PAR_BASIS)
-        zero_dv01 = dv01_bond(*args, zero_curve, freq=freq, bump_size=bump_size)
+        bond_freq = freq if freq is not None else bond.freq
+        par_price = price_bond(*args, par_curve, freq=bond_freq, basis=PAR_BASIS)
+        zero_price = price_bond(*args, zero_curve, freq=bond_freq)
+        par_duration = effective_duration_bond(*args, par_curve, freq=bond_freq, bump_size=bump_size, basis=PAR_BASIS)
+        zero_duration = effective_duration_bond(*args, zero_curve, freq=bond_freq, bump_size=bump_size)
+        par_dv01 = dv01_bond(*args, par_curve, freq=bond_freq, bump_size=bump_size, basis=PAR_BASIS)
+        zero_dv01 = dv01_bond(*args, zero_curve, freq=bond_freq, bump_size=bump_size)
 
         rows.append(
             {

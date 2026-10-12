@@ -218,10 +218,9 @@ def key_rate_duration_portfolio(
     mutates elsewhere.
 
     freq : None (default) prices each bond at its OWN bond.freq; an
-    explicit int overrides every bond to that one shared frequency (see
-    models.bond_pricing.price_portfolio's own docstring for why that
-    override exists -- e.g. required when curve is a zero curve, which
-    must be priced against at the freq it was bootstrapped with).
+    explicit int overrides every bond to that one shared frequency. Either
+    way the curve is compounded at its own convention, not the bond's
+    (models.bond_pricing, "COUPON FREQUENCY vs. CURVE COMPOUNDING").
 
     basis : forwarded to price_bond -- "zero" (default) bumps the par
     curve, re-bootstraps and reprices; "par" discounts straight off the

@@ -93,11 +93,10 @@ bond many times against slightly changed curves).
 addition) rather than one frequency shared by the whole portfolio — a
 portfolio can mix payment frequencies across bonds, and each one prices
 correctly at its own. Pass an explicit `freq` to override every bond to
-that one shared frequency instead; this is still needed in at least one
-place — `models/zero_curve_impact.py`'s par-vs-zero comparison requires
-every bond discounted at the *same* frequency its zero curve was
-bootstrapped with, so per-bond freq would be wrong there specifically
-(that module's own docstring has the reasoning). Every other
+that one shared frequency instead. Either way, `freq` sets only when a
+bond's cash flows fall; curve rates are compounded at the curve's own
+semiannual convention (`compounding_freq`, 2026-10-12,
+`special_phase_a_documentation.md` §3.3). Every other
 `_portfolio`-suffixed function downstream of this one (Key Rate Duration,
 DV01, the cash flow ladder, bond analytics, factor exposure) follows the
 same `None` = per-bond, explicit-int = override convention.

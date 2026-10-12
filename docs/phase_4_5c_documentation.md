@@ -150,14 +150,18 @@ price_via_zero_curve` and `price_bond` itself) agree.
 
 `models.zero_curve_impact.compute_par_vs_zero_impact` reprices the
 standard portfolio (`config/portfolio.json`) against the committed
-snapshot curve (`prefer_live=False`, reproducible) both ways. Unlike
-`price_portfolio` and the other `_portfolio` functions downstream of it
-(which default to pricing each bond at its own `Bond.freq`, `docs/
-phase_2b_documentation.md §1.3`), `compute_par_vs_zero_impact` keeps
-`freq` a single required argument for the whole portfolio -- every bond
-here must be discounted at the same frequency the zero curve was itself
-bootstrapped with, or the par-vs-zero comparison would be internally
-inconsistent (that module's own docstring has the full reasoning).
+snapshot curve (`prefer_live=False`, reproducible) both ways. Each bond
+is priced at its own coupon frequency; both sides compound at the curve's
+own convention (semiannual), so for each bond the par and zero prices
+share the same cash flows and the same compounding and differ only in the
+rate used.
+
+*Changed 2026-10-12.* This originally required one shared `freq` for the
+whole portfolio, because a single `freq` set both the cash-flow dates and
+the compounding, so a bond at another frequency would have been read
+against the zero curve at the wrong convention. The two are now separate
+(`special_phase_a_documentation.md` §3.3), so mixed frequencies are fine.
+No figure below changes: every bond in the portfolio is semiannual.
 
 **Per bond:**
 
