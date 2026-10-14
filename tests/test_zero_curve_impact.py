@@ -160,7 +160,7 @@ def _synthetic_pca_result(tenors: np.ndarray, loadings: np.ndarray) -> CurvePCAR
 
 
 def test_cosine_similarity_is_exactly_one_for_an_identical_flat_shape():
-    # beta0's shape (module docstring) is a constant vector -- a PCA
+    # The level shape "1" (module docstring) is a constant vector -- a PCA
     # "loading" that is ALSO exactly flat (unit-normalized) must give a
     # cosine similarity of exactly 1.0, an analytic ground truth
     # independent of any real PCA fit.
@@ -172,8 +172,8 @@ def test_cosine_similarity_is_exactly_one_for_an_identical_flat_shape():
     ns_result = fit_nelson_siegel(zero_curve)  # a flat curve fits with beta1=beta2=0 (any tau)
 
     comparison = compare_ns_shapes_to_pca(ns_result, pca_result)
-    beta0_row = comparison.set_index("beta").loc["beta0"]
-    assert beta0_row["raw_cosine_similarity"] == pytest.approx(1.0, abs=1e-8)
+    level_row = comparison.set_index("ns_shape").loc["1"]
+    assert level_row["raw_cosine_similarity"] == pytest.approx(1.0, abs=1e-8)
 
 
 def test_sign_aligned_cosine_similarity_is_the_absolute_raw_value():
@@ -198,14 +198,14 @@ def test_comparison_returns_one_row_per_available_component():
 
     ns_result = fit_nelson_siegel(bootstrap_zero_curve(par_curve))
     comparison = compare_ns_shapes_to_pca(ns_result, pca_result)
-    assert list(comparison["beta"]) == ["beta0", "beta1", "beta2"]
+    assert list(comparison["ns_shape"]) == ["1", "f1", "f2"]
     assert list(comparison["pca_component"]) == [1, 2, 3]
     assert (comparison["sign_aligned_cosine_similarity"] <= 1.0 + 1e-9).all()
     assert (comparison["sign_aligned_cosine_similarity"] >= 0).all()
 
 
 def test_level_shape_correspondence_is_strong_on_real_data():
-    # Real finding (docs/phase_4_5c_documentation.md §3): beta0's flat
+    # Real finding (docs/phase_4_5c_documentation.md §3): the level shape's flat
     # shape closely matches PC1 on this project's default data -- checked
     # directly, not assumed to hold for every possible curve.
     history = load_jgb_curve_history(lookback_years=DEFAULT_PCA_LOOKBACK_YEARS, prefer_live=False, verbose=False)
@@ -214,8 +214,8 @@ def test_level_shape_correspondence_is_strong_on_real_data():
     from models.bootstrap import bootstrap_zero_curve
 
     ns_result = fit_nelson_siegel(bootstrap_zero_curve(par_curve))
-    comparison = compare_ns_shapes_to_pca(ns_result, pca_result).set_index("beta")
-    assert comparison.loc["beta0", "sign_aligned_cosine_similarity"] > 0.9
+    comparison = compare_ns_shapes_to_pca(ns_result, pca_result).set_index("ns_shape")
+    assert comparison.loc["1", "sign_aligned_cosine_similarity"] > 0.9
 
 
 # --------------------------------------------------------------------------

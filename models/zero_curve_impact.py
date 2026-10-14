@@ -48,7 +48,7 @@ the comparison rather than dropping whichever ones the zero curve's
 coarser native grid didn't happen to share.
 
 PART 2 -- DO NELSON-SIEGEL'S SHAPES RESEMBLE PCA'S LOADINGS?
-Nelson-Siegel's three beta terms are conventionally read as level, slope,
+Nelson-Siegel's three terms (each beta times its shape) are conventionally read as level, slope,
 and curvature -- the same reading PCA's own first three components get
 (models.pca's own docstring). One is a functional form IMPOSED on the
 curve; the other is a statistical decomposition ESTIMATED from real
@@ -72,24 +72,15 @@ treatment used throughout this project (docs/phase_4b_documentation.md
 sign_aligned_cosine_similarity = abs(raw_cosine_similarity).
 
 FINDING, REPORTED AS OBSERVED, NOT ASSUMED (docs/phase_4_5c_documentation.md
-§3 for the full account): beta0's shape (a flat, all-ones vector) matches
-PC1 closely -- PCA's own dominant "level" factor turns out to be close to
-flat over this tenor range. beta1 and beta2 do NOT resemble PC2/PC3
-closely under Nelson-Siegel's OWN best-fit tau (50 years, the top of
-its search range, Part B) -- because a tau that large produces basis functions that barely decay
-across a 1-40Y grid at all, so beta1's "slope" shape stays positive and
-high everywhere instead of swinging sign the way PC2 empirically does,
-and beta2's "hump" never turns over within the visible tenor range. This
-is checked to be tau-dependent, not a fixed property of Nelson-Siegel
-itself: Svensson's much smaller tau1 (~2.9 years, Part B) produces a
-visibly closer (though still partial) match to PC2. Neither is claimed
-to be "correct" -- see the module docstring caution against overclaiming,
-and models.diebold_li's own, structurally different (fixed-tau,
-TIME-SERIES) comparison, which finds a much stronger slope
-correspondence (0.955) under ITS OWN, smaller, historically-chosen tau --
-itself informative evidence that tau size, not the Nelson-Siegel
-functional form per se, drives how "slope-like" or "curvature-like" its
-components actually look next to PCA's empirically-extracted ones.
+§3 for the full account): the level shape (1) matches PC1 closely
+(0.962); the f1 and f2 shapes do not match PC2/PC3 (0.229, 0.112 at the
+fitted tau = 50; at most ~0.52 and ~0.20 at any tau, doc §3.3). This
+measures whether the NAMES line up, and they don't: NS's f1 is always
+positive (mostly level), while PC2 changes sign. It does NOT mean NS
+can't represent the curve's moves -- its three shapes together capture
+almost as much daily variance as PCA's (doc §3.4). The reason to keep
+PCA for risk is that NS's betas move together (models.diebold_li;
+docs/phase_4_5b_dl_documentation.md §4).
 """
 
 from __future__ import annotations
@@ -329,10 +320,10 @@ def plot_par_zero_fitted_curve(
 # second hump has no PCA counterpart; docs/phase_4_5c_documentation.md §3)
 # ---------------------------------------------------------------------------
 
-# (beta name, PCA component) pairs this project reads as level/slope/
+# (NS shape, PCA component) pairs this project reads as level/slope/
 # curvature -- the same three-way reading models.pca and
 # models.curve_fitting's own docstrings already use.
-_LOADING_PAIRS = [("beta0", 1), ("beta1", 2), ("beta2", 3)]
+_LOADING_PAIRS = [("1", 1), ("f1", 2), ("f2", 3)]
 
 
 def _ns_shape_vectors(tau: float, tenors: np.ndarray) -> dict[str, np.ndarray]:
@@ -341,7 +332,7 @@ def _ns_shape_vectors(tau: float, tenors: np.ndarray) -> dict[str, np.ndarray]:
     the same normalization CurvePCAResult.loadings' own rows already use
     -- so the two are directly comparable via cosine similarity."""
     f1, f2 = hump_factors(tau, tenors)
-    raw = {"beta0": np.ones_like(tenors), "beta1": f1, "beta2": f2}
+    raw = {"1": np.ones_like(tenors), "f1": f1, "f2": f2}
     return {name: vec / np.linalg.norm(vec) for name, vec in raw.items()}
 
 
@@ -354,20 +345,20 @@ def compare_ns_shapes_to_pca(
     tenor grid -- module docstring "PART 2" for the method and the sign
     handling.
 
-    Returns a DataFrame, one row per (beta, PCA component) pair actually
-    available, columns [beta, pca_component, raw_cosine_similarity,
+    Returns a DataFrame, one row per (NS shape, PCA component) pair actually
+    available, columns [ns_shape, pca_component, raw_cosine_similarity,
     sign_aligned_cosine_similarity].
     """
     shapes = _ns_shape_vectors(ns_result.tau, pca_result.tenors)
     rows = []
-    for beta_name, component in _LOADING_PAIRS:
+    for shape_name, component in _LOADING_PAIRS:
         if component not in pca_result.loadings.index:
             continue
         pca_vec = pca_result.loadings.loc[component].to_numpy()
-        raw_cosine = float(np.dot(shapes[beta_name], pca_vec))
+        raw_cosine = float(np.dot(shapes[shape_name], pca_vec))
         rows.append(
             {
-                "beta": beta_name,
+                "ns_shape": shape_name,
                 "pca_component": component,
                 "raw_cosine_similarity": raw_cosine,
                 "sign_aligned_cosine_similarity": abs(raw_cosine),
@@ -385,21 +376,21 @@ def plot_loadings_comparison(
     """The three paired (NS shape, PCA loading) vectors over the tenor
     axis, sign-aligned per `comparison`, one panel per pair."""
     shapes = _ns_shape_vectors(ns_result.tau, pca_result.tenors)
-    labels = {"beta0": "level", "beta1": "slope", "beta2": "curvature"}
-    by_beta = comparison.set_index("beta")
+    labels = {"1": "level", "f1": "slope", "f2": "curvature"}
+    by_shape = comparison.set_index("ns_shape")
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5), sharex=True)
-    for ax, (beta_name, label) in zip(axes, labels.items()):
-        row = by_beta.loc[beta_name]
+    for ax, (shape_name, label) in zip(axes, labels.items()):
+        row = by_shape.loc[shape_name]
         component = int(row["pca_component"])
         sign = 1.0 if row["raw_cosine_similarity"] >= 0 else -1.0
 
-        ax.plot(pca_result.tenors, shapes[beta_name], "o-", label=f"NS {beta_name} shape", color="#55A868")
+        ax.plot(pca_result.tenors, shapes[shape_name], "o-", label=f"NS {shape_name} shape", color="#55A868")
         ax.plot(
             pca_result.tenors, pca_result.loadings.loc[component].to_numpy() * sign,
             "s--", label=f"PC{component} loading (sign-aligned)", color="#4C72B0",
         )
-        ax.set_title(f"{beta_name} ({label}) vs. PC{component}\ncosine = {row['sign_aligned_cosine_similarity']:.3f}")
+        ax.set_title(f"NS {shape_name} ({label}) vs. PC{component}\ncosine = {row['sign_aligned_cosine_similarity']:.3f}")
         ax.set_xlabel("Maturity (years)")
         ax.legend(fontsize=8)
     axes[0].set_ylabel("Unit-norm loading")

@@ -1,5 +1,12 @@
 # Phase 4.5B (Diebold-Li) Documentation — `models/diebold_li.py`
 
+> **2026-10-13: §4's weak matches are a pairing effect.** Daily changes
+> in `beta0` and `beta1` correlate at −0.98, so each curve move is split
+> across the betas. All three together explain PC1-PC3 almost exactly
+> (1.000 / 0.995 / 0.982), but one at a time they don't, and every
+> correlation moves strongly with tau. §4 has the figures; this is why
+> PCA, not NS's betas, is used as the factor model.
+
 > **Special Phase B (2026-10-02).** §3 explains the April–August 2026
 > poor fits as "a genuine curve regime… not a data problem" — a hump into
 > 25Y. MOF's 25Y point is built from old 0.7%-coupon bonds and sits
@@ -308,6 +315,10 @@ differencing):
   tilt" than a textbook parallel shift, which `beta0` alone doesn't
   capture — some of what PC1 measures likely leaks into `beta1`/`beta2`
   instead. This is offered as a plausible explanation, not a proven one.
+  **Update (2026-10-13):** the main cause is that the betas share the
+  level move — all three together explain PC1's daily score exactly
+  (see "The betas move together" below). The PC1 tilt and the mixed
+  basis account for less.
 
 **What this comparison does and does not show.** A strong correlation
 (slope) is genuine empirical support that two independently-derived
@@ -329,6 +340,75 @@ here to avoid restructuring already-shipped work — operates on the raw
 historical **par-treated** yield changes directly. This is a real,
 disclosed asymmetry, on top of the functional-form and sign-convention
 differences already discussed above.
+
+
+**Sensitivity to tau (added 2026-10-13).** The correlations above hold
+at `DEFAULT_TAU = 7` only. Re-running the same comparison (same 486
+dates, same PCA) across tau:
+
+| tau (years) | Level ↔ PC1 | Slope ↔ PC2 | Curvature ↔ PC3 |
+| --- | --- | --- | --- |
+| 0.5 | 0.881 | 0.977 | 0.015 |
+| 1 | 0.807 | 0.826 | 0.086 |
+| 2 | 0.673 | 0.250 | 0.201 |
+| 3 | 0.573 | 0.696 | 0.287 |
+| 5 | 0.410 | 0.909 | 0.415 |
+| **7 (`DEFAULT_TAU`)** | **0.269** | **0.955** | **0.504** |
+| 8 | 0.206 | 0.957 | 0.537 |
+| 10 | 0.093 | 0.941 | 0.588 |
+| 20 | 0.264 | 0.725 | 0.685 |
+| 50 | 0.534 | 0.300 | 0.706 |
+| 1000 | 0.629 | 0.071 | 0.684 |
+
+- **Every correlation moves a lot with tau, and each peaks at a
+  different tau:** level at small tau, slope at 7-8, curvature at 30-50.
+  No single tau makes all three strong. The reason: NS's shapes overlap
+  (`f1` is mostly level), so the same daily curve change is split among
+  the three betas differently at each tau (next paragraph).
+- **tau = 7 was not tuned to these correlations.** It was set by median
+  fit error (§2), before this comparison. That it sits at slope's peak is
+  a result, not a choice. Choosing tau to maximize the correlations would
+  make the comparison circular.
+- **The weak level correlation (0.269) depends heavily on tau** (0.09
+  at tau 10 to 0.88 at tau 0.5) because tau changes how the level move
+  is split across the betas, not because the level information is
+  missing (next paragraph).
+- **Very small tau is not a better model.** At tau = 0.5, `f1` falls to
+  0.17 by 3Y and 0.05 by 10Y, so `beta1` mostly moves the very short
+  end, and median fit error is ~9x worse (§2). Its high correlations
+  are not evidence for that tau.
+- The dip at tau = 2 (slope 0.250, between 0.826 and 0.696) is reported
+  as measured; it is not explained here.
+
+**The betas move together (added 2026-10-13).** Correlation of daily
+beta changes with each other, same 486 dates:
+
+| | tau 7 | tau 50 |
+| --- | --- | --- |
+| `beta0` vs. `beta1` | **−0.983** | **−1.000** |
+| `beta0` vs. `beta2` | −0.761 | −0.982 |
+| `beta1` vs. `beta2` | 0.730 | 0.980 |
+
+Because `f1` is mostly level, a curve move is split into a large
+`beta0` change and an almost equal, opposite `beta1` change. At tau 50
+the daily beta changes are ~10x larger than at tau 7 (std ~1.05% vs.
+~0.09%) and almost cancel. Explaining each PC score with all three beta
+changes together, instead of its paired beta alone (tau 7):
+
+| PC score | Paired beta alone (table above) | All three betas together |
+| --- | --- | --- |
+| PC1 | 0.269 | **1.000** |
+| PC2 | 0.955 | **0.995** |
+| PC3 | 0.504 | **0.982** |
+
+So the movement information is all in NS's betas, but only jointly: no
+single beta is a standalone level, slope or curvature factor. That is
+the reason this project keeps PCA for factor risk (exposure, attribution,
+VaR shock one factor at a time, and PCA's scores are uncorrelated by
+construction), not that NS fits the moves badly — NS's shapes capture
+96.7% of daily curve variance at tau 7 vs. PCA's 97.5%
+(`docs/phase_4_5c_documentation.md` §3.4). Measured with ad hoc scripts
+on the snapshot window, in-sample; not yet in the repo.
 
 ---
 

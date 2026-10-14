@@ -21,9 +21,12 @@ one. Second, it checks something Part B's smooth curve description
 implicitly claims: that its three shape parameters (called "level",
 "slope", and "curvature") describe the same real market patterns Phase
 4B's separate statistical analysis (PCA) already found in years of real
-data. The honest answer is: partly. One of the three lines up well; the
-other two, less so — and this part explains why, rather than picking the
-answer that sounds better.
+data. The answer (revised 2026-10-13): the names match only partly. "Level"
+lines up; "slope" and "curvature" mean something different in each
+model. But NS's three shapes together capture almost as much of the
+curve's daily movement as PCA's. The project keeps PCA for risk for a
+different reason: NS's three numbers move together, so none of them can
+be used on its own as a separate risk factor.
 
 ---
 
@@ -281,61 +284,147 @@ Against the committed snapshot curve and the default 2-year PCA window
 the top of its search range, so this fit is flagged as not converged
 (`docs/phase_4_5b_documentation.md` §5; the live curve does the same):
 
-| Beta | PCA component | Cosine similarity |
+| NS shape (`ns_shape`) | PCA component | Cosine similarity |
 | --- | --- | --- |
-| `beta0` (level) | PC1 (level) | **0.962** — strong |
-| `beta1` (slope) | PC2 (slope) | **0.229** — weak |
-| `beta2` (curvature) | PC3 (curvature) | **0.112** — essentially none |
+| `1` (level) | PC1 (level) | **0.962** — strong |
+| `f1` (slope) | PC2 (slope) | **0.229** — weak |
+| `f2` (curvature) | PC3 (curvature) | **0.112** — essentially none |
 
-**Reported as found, not smoothed into one story.** `beta0`'s shape is
+Only the shapes are compared; the betas (how much of each shape the fit
+uses) never enter. Each shape is the one its beta multiplies in
+`y(m) = beta0·1 + beta1·f1 + beta2·f2`.
+
+**Reported as found, not smoothed into one story.** The level shape `1` is
 trivially flat (a constant `1` at every maturity); PCA's PC1 turns out to
 be reasonably close to flat too (checked separately, Phase 4C's own
 finding that PC1's loadings stay in a fairly narrow band, elevated from
-the belly through 40Y) — hence the strong match. `beta1` and `beta2` do
+the belly through 40Y) — hence the strong match. `f1` and `f2` do
 **not** resemble PC2/PC3 well under this tau, and the loadings comparison
-chart (`outputs/ns_vs_pca_loadings.png`) makes the mismatch visually
-obvious: NS's `beta1` shape declines gently and monotonically from 1Y to
-40Y, never changing sign, while PC2 swings from clearly negative (short
-end) to clearly positive (long end) — a genuine slope. NS's `beta2` shape
-*rises* monotonically across the whole grid; PC3 instead dips negative
-around 25Y between two positive wings — a real hump-and-trough shape
-`beta2` never takes on at this tau.
+chart (`outputs/ns_vs_pca_loadings.png`, generated from the snapshot
+with `prefer_live=False`; running the script as-is uses the live curve)
+makes the mismatch visually obvious. NS's `f1` shape declines gently
+from 1Y to 40Y and never changes sign, while PC2 changes sign between
+10Y and 15Y: as plotted (sign-aligned), positive at the short end and clearly
+negative at the long end — a genuine slope. NS's `f2` shape *rises*
+across the whole grid; PC3 is positive from 1Y to 6Y, negative from 7Y
+to 25Y (deepest at 15Y, −0.34), and positive again at 30-40Y.
 
-### 3.3 Why — and the tau-dependence check that keeps this from overclaiming
+### 3.3 Is it just tau? The tau sweep
 
-The mismatch traces to a specific, checkable cause: **`tau = 50` years is
-large relative to this project's 1-40Y tenor range**, so `f1`/`f2` barely
-decay across it — `f1` only falls from 0.990 at 1Y to 0.688 at 40Y,
-nowhere near the sign change a genuine slope factor needs, and `f2`'s
-"hump" (peaking at `m ≈ 1.79 × tau` ≈ 90Y) never turns over within a 40-year grid
-at all. This is a property of *this specific fitted tau*, not of
-Nelson-Siegel's functional form in the abstract — checked directly, not
-assumed:
+> **Correction (2026-10-13):** an earlier version of this section said
+> the mismatch was "a property of this specific fitted tau, not of
+> Nelson-Siegel's functional form", and cited Diebold-Li's 0.955 as
+> evidence about tau. The tau sweep below shows tau explains only part of
+> the slope gap, and 0.955 measures daily movement, not shape. §3.4 then
+> shows why the low cosines do **not** mean NS can't represent the
+> curve's moves.
 
-- **Svensson's much smaller `tau1 = 2.94`** (Part B, same data; this fit
-  does converge) produces a visibly steeper-decaying `beta1` shape and a
-  correspondingly stronger — though still partial — match to PC2 (cosine
-  0.522, more than double NS's).
-- **`models.diebold_li`'s comparison**, structurally different (a fixed,
-  much smaller `tau = 7.0` years, and a *time-series* correlation of
-  day-to-day score movements rather than a static shape comparison),
-  finds a much stronger slope correspondence — **0.955**
-  (`docs/phase_4_5b_dl_documentation.md` §4).
+**Why sweep tau instead of re-running on more dates.** NS's three shapes
+depend on one input only: tau. A different curve date changes the shapes
+only through the tau its fit lands on. So evaluating the shapes across
+the whole tau range covers every date at once. The sweep holds the PCA
+loadings fixed (same snapshot window, 2024-09-02 to 2026-08-31, 486
+dates):
 
-Put together, these three results are not contradictory — they show that
-**how "slope-like" or "curvature-like" a Nelson-Siegel component looks
-depends heavily on tau**, and a tau chosen purely to minimize RMSE
-against a single day's curve (Part B's cross-sectional fit) does not
-automatically produce components that resemble PCA's empirically-derived
-factor shapes. Neither model is being called "wrong": one imposes a
-functional form and finds whatever tau best fits the data at hand; the
-other extracts whatever direction the data moves in most, with no
-functional-form assumption at all. Their level components resembling
-each other closely is a genuine, reportable finding; their slope and
-curvature components not resembling each other closely under NS's own
-best-fit tau is an equally genuine, reportable finding — not a failure of
-either method, and not evidence that either factor is "the truth" the
-other should be validated against.
+| tau (years) | `1` ↔ PC1 | `f1` ↔ PC2 | `f2` ↔ PC3 | Where this tau occurs |
+| --- | --- | --- | --- | --- |
+| 2 | 0.962 | 0.520 | 0.204 | |
+| 3 | 0.962 | 0.521 | 0.082 | Svensson's `tau1 = 2.94` (0.522) |
+| 4 | 0.962 | 0.511 | 0.009 | |
+| 5 | 0.962 | 0.497 | 0.033 | Converged month-end fits, 2021-2025 (~4-6) |
+| 6 | 0.962 | 0.481 | 0.055 | |
+| 7 | 0.962 | 0.466 | 0.066 | Diebold-Li's fixed tau |
+| 10 | 0.962 | 0.422 | 0.059 | |
+| 20 | 0.962 | 0.327 | 0.018 | |
+| **50** | **0.962** | **0.229** | **0.112** | **This fit (search boundary); every 2026 month-end** |
+| 1000 | 0.962 | 0.142 | 0.185 | Close to the tau → ∞ limit (0.136 / 0.189) |
+
+The "where this tau occurs" column for month-ends comes from a sweep of
+NS fits on 61 month-end curves, 2021-2026 (run 2026-10-12, not saved in
+the repo): 51 converged with tau ≈ 4-6; all 2026 month-ends hit 50.
+
+- **Level: 0.962 at every tau.** The shape `1` does not involve tau.
+- **Slope: tau matters, but caps at ~0.52.** A normally converged fit
+  (tau 4-6) does about twice as well as the boundary fit, but still only
+  half-matches. Every tau ≥ 50 gives 0.14-0.23.
+- **Curvature: ≤ 0.20 at every tau.**
+
+So, shape by shape, the names do not line up at any tau. Svensson's
+`tau1 = 2.94` row is NS's `f1` evaluated at that tau, not a Svensson
+comparison (Svensson's second hump has no PCA counterpart). Diebold-Li's
+0.955 is a correlation of daily *movements*
+(`docs/phase_4_5b_dl_documentation.md` §4); at its tau = 7 the slope
+*shape* matches only 0.466.
+
+### 3.4 Same names, different meanings — and why that is not the reason to keep PCA
+
+Added 2026-10-13. Figures measured on the same snapshot window,
+in-sample, with ad hoc scripts not yet in the repo.
+
+**Why the cosines are low: NS's shapes overlap.** PCA's loadings are
+perpendicular to each other by construction, so PC2 contains no level.
+NS's `f1` is positive at every tenor, so it is mostly level: its cosine
+with `1` is 0.926 at tau 7 and 0.995 at tau 50. The names therefore mean
+different things:
+
+| Name | NS meaning | PCA meaning (snapshot loadings) |
+| --- | --- | --- |
+| Level | Flat move | Same-direction move, larger from the belly out |
+| Slope | Short end moves more, **same direction** | Short and long ends move **opposite ways** (sign change between 10Y and 15Y) |
+| Curvature | One hump above zero | 7-25Y belly against both wings (deepest at 15Y) |
+
+**Coverage is not the problem.** Together, NS's three shapes reproduce
+the curve's daily moves almost as well as PCA's three. Share of daily
+curve-change variance captured:
+
+| Shapes | Variance captured |
+| --- | --- |
+| PCA top 3 (the most any three shapes can capture here) | **97.5%** |
+| NS, tau 5 | 96.9% |
+| NS, tau 7 | 96.7% |
+| NS, tau 50 | 94.9% |
+| NS, tau 1 | 91.1% |
+
+Each PC can also be rebuilt as a mix of `1`, `f1`, `f2`: at tau 7,
+cosine 0.999 (PC1), 0.987 (PC2), 0.894 (PC3). So the low cosines in
+§3.2-3.3 do **not** mean NS cannot represent slope or curvature moves.
+
+**The actual reason to keep PCA: NS's betas move together.** Because the
+shapes overlap, one curve move is split across the betas in large,
+offsetting amounts. Daily changes in Diebold-Li's `beta0` and `beta1`
+correlate at −0.98 (tau 7) and −1.00 (tau 50). All three betas together
+explain PC1-PC3's daily scores almost exactly (1.000 / 0.995 / 0.982),
+but no single beta does (Test B: 0.269 / 0.955 / 0.504) —
+`docs/phase_4_5b_dl_documentation.md` §4. Risk work (factor exposure,
+P&L attribution, Phase 5 VaR) shocks and attributes one factor at a
+time. A single NS beta is not a move that happens on its own; PCA's
+scores are uncorrelated by construction.
+
+**Alternatives considered:**
+
+- **Strip the overlap** (`1`; `f1` minus its level part; `f2` minus
+  both). The shapes then match well (tau 7: slope 0.900, curvature
+  0.837), but the result depends on the stripping order, which NS gives
+  no rule for (other orders: slope 0.70-0.78), and the stripped factors'
+  daily amounts still correlate (up to 0.57). These are also no longer
+  NS's own betas.
+- **Rebuild each PC from NS's shapes.** Possible (cosines above), but
+  the recipe comes from PCA itself — PCA redrawn in NS's shapes, slightly
+  less accurate (96.7% vs. 97.5%) and with an extra parameter (tau).
+  Worth revisiting only if factors are needed outside the data's
+  maturities or held fixed across windows (PCA loadings shift with the
+  window; NS shapes depend only on tau).
+
+**Conclusion.** No factor matches on both tests (level matches on shape
+only, slope on movement only, curvature on neither). That is because the
+names mean different things and NS's betas only represent the curve's
+moves jointly. The project keeps PCA for factor risk because its
+factors are uncorrelated, not because NS fits the moves badly.
+
+**Remaining limit.** Everything here holds PCA fixed on one 2-year
+window, and PCA loadings depend on the window chosen
+(`docs/phase_4b_documentation.md` §1.5). Out of sample, NS's fixed shapes
+might compare differently. Not tested; a candidate for Phase 6.
 
 ---
 
@@ -373,11 +462,11 @@ It measures sensitivity to zero-rate shifts; this project's factors are
 par-yield moves. Against the consistent benchmark the error is −1.3%
 (understating) on today's curve, and its sign flips on an inverted curve.
 
-**5.3 The C2 loading comparison is a single cross-section, at one tau.**
-§3.3's tau-dependence finding is itself evidence that this comparison
-would look different on a different day (a different fitted tau) or a
-different tau-selection method (Svensson, Diebold-Li). It should not be
-read as a permanent verdict on whether Nelson-Siegel and PCA "agree."
+**5.3 The C2 comparison is in-sample, on one PCA window.** The tau
+sweep (§3.3) covers every NS shape a date could produce, but PCA's
+loadings come from one 2-year window, and §3.4's variance and
+beta-correlation figures are in-sample on that window from ad hoc
+scripts. A rolling-window, out-of-sample version is not built.
 
 **5.4 The per-tenor KRD/DV01 comparison (§2) depends on the alignment
 choice (§1 of this doc; interpolating the zero curve onto the par
