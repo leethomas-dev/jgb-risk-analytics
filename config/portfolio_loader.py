@@ -46,7 +46,7 @@ actively wrong there.
 
 DATE FORMATS (issue_date, maturity_date, valuation_date): ISO YYYY-MM-DD
 is the canonical form and what Bond always stores, but the loader also
-accepts a set of unambiguous alternatives -- see _parse_date -- such as
+accepts a set of unambiguous alternatives -- see parse_date -- such as
 YYYY/MM/DD, YYYY.MM.DD, YYYYMMDD, a spelled-out month (04-Mar-2025,
 March 4, 2025), Japanese numeric dates (2025年3月4日, fullwidth digits
 like ２０２５年３月４日 included), or a Japanese era date (令和7年3月4日,
@@ -108,7 +108,7 @@ MATURITY_CONSISTENCY_TOLERANCE_YEARS = 0.05
 # ~7.5 days (~0.07 per 100 of price).
 DAYS_PER_YEAR = 365.0
 
-# Non-ISO date formats _parse_date also accepts, tried in this order after
+# Non-ISO date formats parse_date also accepts, tried in this order after
 # ISO YYYY-MM-DD fails. Every format here is unambiguous by construction --
 # the year is 4 digits and either leads (YYYY/MM/DD-style) or the month is
 # spelled out as a name rather than a number -- so there's no MM/DD vs.
@@ -223,7 +223,7 @@ class Bond:
     freq: int = DEFAULT_COUPON_FREQ
 
 
-def _parse_date(raw: str, *, error_prefix: str) -> date:
+def parse_date(raw: str, *, error_prefix: str) -> date:
     """Parse a date string, accepting ISO YYYY-MM-DD plus the unambiguous
     alternatives in _ADDITIONAL_DATE_FORMATS and Japanese era dates (see
     _parse_japanese_era_date). Fullwidth digits are normalized to ASCII
@@ -259,13 +259,13 @@ def _parse_date(raw: str, *, error_prefix: str) -> date:
 
 def _resolve_valuation_date(valuation_date: str | date | None) -> date:
     """Normalize the valuation_date argument to a date: None -> today, a
-    date is passed through, a str is parsed via _parse_date (ISO
+    date is passed through, a str is parsed via parse_date (ISO
     YYYY-MM-DD or one of its unambiguous alternatives)."""
     if valuation_date is None:
         return date.today()
     if isinstance(valuation_date, date):
         return valuation_date
-    return _parse_date(
+    return parse_date(
         str(valuation_date),
         error_prefix=f"load_portfolio: unparseable valuation_date {valuation_date!r}",
     )
@@ -307,7 +307,7 @@ def _resolve_maturity(
         return stated_years, None  # type: ignore[return-value]
 
     maturity_date_raw = str(raw["maturity_date"])
-    maturity_dt = _parse_date(
+    maturity_dt = parse_date(
         maturity_date_raw,
         error_prefix=(
             f"{source}: bond {name!r} (index {index}) has an unparseable "
@@ -343,7 +343,7 @@ def load_portfolio(
         this is the hook a test, or a future dashboard, uses to supply its
         own portfolio without touching the default file.
     valuation_date : optional date (or a date string -- ISO YYYY-MM-DD or
-        an unambiguous alternative, see _parse_date) that a maturity_date
+        an unambiguous alternative, see parse_date) that a maturity_date
         is measured from. Defaults to today; pass an explicit date for a
         reproducible run.
 
@@ -391,7 +391,7 @@ def load_portfolio(
         # so Bond.issue_date is always YYYY-MM-DD regardless of input format.
         issue_date_str: str | None = None
         if issue_date_raw is not None:
-            issue_date_str = _parse_date(
+            issue_date_str = parse_date(
                 str(issue_date_raw),
                 error_prefix=(
                     f"{portfolio_path}: bond {name!r} (index {i}) has an "

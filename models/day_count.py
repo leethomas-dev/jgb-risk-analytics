@@ -9,7 +9,7 @@ treats every month as having 30 days, so it would count days differently
 than this module's ACT/365 does, not just apply a different denominator.
 
 ONLY ACT/365 IS IMPLEMENTED, because it's the only one this project needs
-(JGBs use it -- see docs/phase_4_6a_documentation.md §1 for how that was
+(JGBs use it -- see docs/phase_4_6a_documentation.md §2 for how that was
 verified, and the one point that couldn't be verified from a primary
 source). The module is still structured as a small registry keyed by a
 convention name, specifically so a second convention could be added later

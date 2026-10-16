@@ -497,6 +497,20 @@ def test_accrued_rejects_settlement_before_valuation_date():
         )
 
 
+def test_accrued_accepts_the_same_date_strings_as_load_portfolio():
+    # Era date, slash form and fullwidth digits all parse to the same
+    # dates as their ISO equivalents (shared parser, config.portfolio_loader).
+    iso = accrued_interest(100.0, 0.02, 10.0, valuation_date="2026-08-31", settlement_date="2026-10-14")
+    era = accrued_interest(100.0, 0.02, 10.0, valuation_date="令和8年8月31日", settlement_date="令和8年10月14日")
+    slash = accrued_interest(100.0, 0.02, 10.0, valuation_date="2026/08/31", settlement_date="２０２６/１０/１４")
+    assert era == iso == slash == pytest.approx(100.0 * 0.02 * 44 / 365)
+
+
+def test_accrued_rejects_ambiguous_numeric_dates():
+    with pytest.raises(ValueError, match="unparseable date"):
+        accrued_interest(100.0, 0.02, 10.0, valuation_date="2026-08-31", settlement_date="03/04/2027")
+
+
 def test_accrued_rejects_settlement_after_maturity():
     boundaries = _coupon_boundaries(2.0, _VAL_DATE, freq=2)
     with pytest.raises(ValueError, match="after the bond's maturity date"):

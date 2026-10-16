@@ -47,8 +47,9 @@ level versions of both. A new small module, `models/day_count.py`,
 supplies the day count convention (Actual/365) both new functions use.
 
 **Files:** `models/day_count.py` (new) — `day_count()`, `year_fraction()`.
-`models/bond_pricing.py` (extended) — `_cash_flow_schedule()` (factored
-out of `price_bond`, unchanged behavior), `_coupon_boundaries()`,
+`models/bond_pricing.py` (extended) — `cash_flow_schedule()` (factored
+out of `price_bond`, unchanged behavior; private `_cash_flow_schedule`
+until Phase 4.6B made it public), `_coupon_boundaries()`,
 `accrued_interest()`, `dirty_price()`, `accrued_interest_portfolio()`,
 `dirty_price_portfolio()`.
 
@@ -166,9 +167,12 @@ accrued = face_value * coupon_rate * days_elapsed / 365
 
 `days_elapsed` is actual calendar days since the current period started.
 The denominator is a fixed 365, not the period's own length, so accrued
-on the last day of a 183-day period is slightly **more** than one
-period's coupon (183/365 > 1/2). That is the convention, not an error.
-This is the same formula `models/par_error_check.py` uses against real
+does not reach exactly one period's coupon at the end of a period. In
+this project's calendar, periods are 182 or 183 days and half-open (§5),
+so `days_elapsed` is at most 182: accrued tops out at 182/365 ≈ 0.4986 of
+the annual coupon, just under one period's coupon. (A real 184-day JGB
+period could reach 183/365, slightly over; this calendar has none.) That
+is the convention, not an error. This is the same formula `models/par_error_check.py` uses against real
 JSDA prices (Special Phase B).
 
 **Correction, 2026-10-11.** As first built, this phase followed the
@@ -194,17 +198,33 @@ exist anywhere in this project's data — the illustrative portfolio
 (`config/portfolio.json`) gives only `maturity_years`, never a real
 `issue_date`/`maturity_date` (Phase 2A, §2 of its own doc). `_coupon_boundaries()`
 builds a synthetic-but-consistent calendar directly from
-`price_bond`'s own cash-flow schedule (`_cash_flow_schedule`, factored out
+`price_bond`'s own cash-flow schedule (`cash_flow_schedule`, factored out
 of `price_bond` unchanged specifically for this reuse): each cash-flow
 time (a year offset from `valuation_date`) becomes a calendar date via
 `valuation_date + round(t * DAYS_PER_YEAR)` days, using the same
 `DAYS_PER_YEAR = 365` (ACT/365; 365.25 before 2026-10-11) that
 `config/portfolio_loader.py` uses for the reverse conversion (a real
 `maturity_date` → years remaining, Phase 2A §2). Coupon periods are
-therefore 182 or 183 days by construction, not the real ~181–184 day
+therefore 182 or 183 days by construction, not the real 181–184 day
 range a genuine calendar would produce, and over 30 years the synthetic
 dates fall about 8 days earlier than the same calendar day. Disclosed in
 §6 as a bounded approximation, not a precision claim.
+
+**How real JGB coupon dates work (checked 2026-10-15).** Coupons fall on
+the maturity date's day of the month, every six months: the 1st for 2Y
+JGBs, the 20th for every other tenor. In JSDA's file for 2026-09-01
+(`data/jsda/S260901.csv`, Special Phase B), all 24 outstanding 2Y JGBs
+mature and pay on the 1st, and every 5Y, 10Y, 20Y, 30Y and 40Y JGB pays
+on the 20th. MOF's terms for 2Y issue #487 state the same: coupons "毎年2月1日及び8月1日",
+maturity 令和10年8月1日
+([MOF](https://www.mof.go.jp/jgbs/individual/kojinmuke/houdouhappyou/shinmado20260731.htm)).
+The anchor is the maturity month, not the issue date: #487's
+retail-window issue settled 2026-09-08 but still pays February/August.
+The rule for a coupon date that falls on a weekend or holiday was not
+checked. Real periods are therefore 181–184 days (1 March → 1 September
+is 184), so in a 184-day period accrued can reach 183/365 of the annual
+coupon, just over one period's coupon; this project's calendar never
+produces that.
 
 ---
 
@@ -230,6 +250,14 @@ dates fall about 8 days earlier than the same calendar day. Disclosed in
   can be documented as the clean price without any code change to it
   (§1) — clean and dirty coincide exactly at the default, by construction.
 
+**Accepted date formats.** Either date can be a `date`, `None` (today), or
+a string. Strings go through `config.portfolio_loader.parse_date`, the
+same parser `load_portfolio()` uses: ISO, `YYYY/MM/DD`, Japanese era
+dates (令和8年10月14日), fullwidth digits, and the other unambiguous forms
+listed there. Numeric `DD/MM/YYYY` and `MM/DD/YYYY` are rejected because
+they're ambiguous. Until 2026-10-16 this module accepted ISO strings
+only, while its docstring claimed the loader's rules.
+
 ---
 
 ## 5. Coupon-date edge cases — handled explicitly, not by accident
@@ -244,7 +272,7 @@ coupon date of a 2-year bond.
 
 **Settlement before a newly-issued bond's first coupon.** In this
 project's schedule, `valuation_date` (boundary 0) is *always* before the
-first coupon (`_cash_flow_schedule`'s own construction — the first cash
+first coupon (`cash_flow_schedule`'s own construction — the first cash
 flow lands at `t > 0`) — so this "newly issued, no coupon paid yet" case
 is actually the general, everyday case for period 0, not a rare one.
 Handled by the same period-finding loop as every other period, not a
@@ -293,11 +321,18 @@ fact (§5).** If JGBs do have an ex-coupon window this project's search
 didn't surface, accrued interest computed by this module would be wrong
 in sign for trades settling inside that window, each period.
 
-**6.3 The coupon calendar is synthetic, built from `DAYS_PER_YEAR = 365`,
-not real per-bond coupon dates (§3).** The illustrative portfolio has no
-real coupon dates to be more precise than; this matches Phase 2A's
-reverse conversion rather than adding a new source of imprecision. A real-bond portfolio (Phase 2A §2, not built yet) would
-supply real coupon dates this module could use directly instead.
+**6.3 The coupon calendar is synthetic, so accrued is right only for the
+illustrative bonds, not for real issues (§3).** The portfolio gives only
+`maturity_years`, so each bond is defined as having exactly N years left
+and `valuation_date` is treated as a coupon date (accrued = 0 there).
+Clean, accrued and dirty are consistent for that bond. For a real JGB the
+error is up to almost a full period's accrual, about half the annual
+coupon: real 2Y #487 (1.5%, coupons 1 Feb / 1 Aug) has accrued
+100 × 1.5% × 30 ÷ 365 = 0.1233 on 2026-08-31, against 0 here; at a 3.5%
+coupon the error can reach about 1.75 per 100. The 182/183-day periods
+and the ~8-day drift over 30 years are small next to that. Loading real
+maturity dates does not fix this on its own: Phase 8 must also build the
+calendar from them (§7).
 
 **6.4 `valuation_date` consistency between this module and a loaded
 portfolio is a caller responsibility, not enforced in code (§4).** Passing
@@ -316,6 +351,15 @@ most one day's accrual, coupon ÷ 365 (about 0.01 per 100 at a 3.5%
 coupon), once every four years. Confirm against a JSDA primary source
 before the SR 11-7 report.
 
+**6.7 A fractional maturity gets a short first period, which understates
+accrued.** `cash_flow_schedule` counts back from maturity, so a 1.3-year
+bond pays at 0.3, 0.8 and 1.3 years and period 0 is only 0.3 years (110
+days). Accrued starts at 0 on `valuation_date`, but a real bond with 1.3
+years left would already be 0.2 years (about 73 days) into its period.
+The illustrative portfolio uses whole years only, so no figure here is
+affected; it matters once maturities come from real `maturity_date`s
+(Phase 8). Real coupon dates (§7) remove it.
+
 ---
 
 ## 7. What would change this design
@@ -332,10 +376,14 @@ one function plus one `_YEAR_LENGTH_DAYS`-style registry entry in
 own logic, both of which already take `day_count_convention` as a plain
 parameter.
 
-**Real per-bond coupon dates** (§6.3), once a real-bond portfolio exists
-(Phase 2A §2), would let `_coupon_boundaries` read them directly instead
-of deriving a synthetic calendar from `DAYS_PER_YEAR` — an additive
-change (an "if real dates are present, use them" branch), not a rewrite.
+**Real per-bond coupon dates** (§6.3, §6.7), once a real-bond portfolio
+exists (Phase 2A §2, Phase 8), would let `_coupon_boundaries` build the
+calendar from the bond's `maturity_date` instead of from `DAYS_PER_YEAR`:
+step back from maturity six months at a time on the same day of the month
+(the 1st for 2Y, the 20th otherwise, §3). Accrued at `valuation_date` would
+then usually be non-zero, and the dashboard's accrued column (Phase 4.7
+§9.3) would show it without a settlement-date control. An additive change
+(an "if a real maturity date is present, use it" branch), not a rewrite.
 
 ---
 

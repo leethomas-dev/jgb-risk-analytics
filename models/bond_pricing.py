@@ -105,7 +105,7 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 
-from config.portfolio_loader import DAYS_PER_YEAR, Bond, load_portfolio
+from config.portfolio_loader import DAYS_PER_YEAR, Bond, load_portfolio, parse_date
 from data.jgb_curve_loader import load_jgb_curve
 from models import day_count
 
@@ -363,17 +363,15 @@ def price_portfolio(
 
 def _resolve_date(value: str | date | None) -> date:
     """Normalize a settlement/valuation date argument: None -> today, a
-    date is passed through, a str is parsed as ISO "YYYY-MM-DD". Mirrors
-    config.portfolio_loader's own _resolve_valuation_date (same rules, same
-    reason: a pinned run stays reproducible) -- reimplemented locally,
-    rather than importing that module's private helper, to keep this
-    module's dependency on Phase 2A limited to its public load_portfolio()
-    contract."""
+    date is passed through, a str is parsed by config.portfolio_loader's
+    parse_date -- the same formats load_portfolio() accepts (ISO, YYYY/MM/DD,
+    Japanese era dates like 令和8年10月14日, fullwidth digits, ...), so
+    both modules read dates the same way from one parser."""
     if value is None:
         return date.today()
     if isinstance(value, date):
         return value
-    return date.fromisoformat(str(value))
+    return parse_date(str(value), error_prefix=f"unparseable date {value!r}")
 
 
 def _coupon_boundaries(maturity_years: float, valuation_date: date, freq: int) -> list[date]:
@@ -419,9 +417,10 @@ def accrued_interest(
     Formula: face x annual coupon rate x (days elapsed since the period
     started) / 365 -- `day_count_convention`'s year fraction (default
     ACT/365, the JGB convention, docs/phase_4_6a_documentation.md §2-3).
-    The denominator is a fixed 365, not the period's own length, so
-    accrued just before a 183-day period ends is slightly MORE than one
-    period's coupon (183/365 > 1/2). That is the convention, not an error.
+    The denominator is a fixed 365, not the period's own length. Periods
+    here are 182 or 183 days and half-open, so days elapsed is at most 182
+    and accrued tops out at 182/365 of the annual coupon -- just under one
+    period's coupon. That is the convention, not an error.
     Until 2026-10-11 this prorated by days in the period instead (ACT/ACT
     ICMA arithmetic under an ACT/365 label).
 
@@ -445,7 +444,7 @@ def accrued_interest(
         bond's own maturity date.
 
     Coupon-date edge cases, handled explicitly (docs/phase_4_6a_documentation.md
-    §2 has the full account, including the one edge case -- an ex-coupon
+    §5 has the full account, including the one edge case -- an ex-coupon
     period -- this project could NOT verify from a primary source):
 
       - settlement_date exactly ON a coupon date (including valuation_date
@@ -469,7 +468,7 @@ def accrued_interest(
         consistent with settlement via Japan's dematerialized, real-time
         DVP book-entry system (no paper-registrar "books closed" period to
         motivate one) and with most other electronically-settled sovereign
-        bond markets. `docs/phase_4_6a_documentation.md` §2 records exactly
+        bond markets. `docs/phase_4_6a_documentation.md` §5 records exactly
         what was checked and why this couldn't be confirmed outright.
     """
     if face_value <= 0:
