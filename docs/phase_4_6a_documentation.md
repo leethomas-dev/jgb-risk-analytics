@@ -14,6 +14,14 @@
 > time (Phase 2A). See §3. No figure in this doc changes: every accrued
 > figure shown is at the default settlement date, where accrued is zero.
 
+> **Dirty price now priced from settlement (2026-10-18):** `dirty_price()`
+> was `price_bond()` + accrued, so the clean part stayed at the valuation
+> date: a settlement months later still counted coupons already paid and
+> discounted over the gap (10Y 2%, valued 2026-08-31, settled 2027-10-14:
+> 91.94 instead of 93.99). It now discounts the payments after settlement
+> from the settlement date; new `clean_price()` = dirty − accrued. At the
+> default settlement date nothing changes. See §4.1.
+
 ## In plain English
 
 Every price this project has computed so far has been a "clean" price —
@@ -42,21 +50,23 @@ of the existing, untouched pricing engine. `price_bond()` (Phase 2B) is
 unchanged — signature and behavior both — and continues to return what
 this phase now documents explicitly as the bond's **clean** price. Two new
 functions in the same file build on it: `accrued_interest()` and
-`dirty_price()` (`= price_bond() + accrued_interest()`), plus portfolio-
-level versions of both. A new small module, `models/day_count.py`,
+`dirty_price()` (the payments after settlement, discounted from the
+settlement date; `price_bond() + accrued_interest()` until 2026-10-18,
+§4.1), plus `clean_price()` (= dirty − accrued) and portfolio-level
+versions. A new small module, `models/day_count.py`,
 supplies the day count convention (Actual/365) both new functions use.
 
 **Files:** `models/day_count.py` (new) — `day_count()`, `year_fraction()`.
 `models/bond_pricing.py` (extended) — `cash_flow_schedule()` (factored
 out of `price_bond`, unchanged behavior; private `_cash_flow_schedule`
 until Phase 4.6B made it public), `_coupon_boundaries()`,
-`accrued_interest()`, `dirty_price()`, `accrued_interest_portfolio()`,
-`dirty_price_portfolio()`.
+`_settlement_calendar()`, `accrued_interest()`, `dirty_price()`,
+`clean_price()`, `accrued_interest_portfolio()`, `dirty_price_portfolio()`.
 
 **Output contract:** `accrued_interest(face_value, coupon_rate,
 maturity_years, freq=2, valuation_date=None, settlement_date=None,
 day_count_convention="ACT/365") -> float`. `dirty_price(..., curve, ...) ->
-float`. Both portfolio versions return a `pd.DataFrame`, one row per bond,
+float`. `clean_price(...)` takes the same arguments. Both portfolio versions return a `pd.DataFrame`, one row per bond,
 no total row — the same shape convention `price_portfolio` already uses.
 
 **The critical constraint, met exactly as required:** every pre-existing
@@ -250,6 +260,50 @@ produces that.
   can be documented as the clean price without any code change to it
   (§1) — clean and dirty coincide exactly at the default, by construction.
 
+### 4.1 Pricing from the settlement date (2026-10-18)
+
+**What was wrong.** `dirty_price()` was `price_bond()` + `accrued_interest()`.
+`price_bond` never sees the settlement date, so the clean part was always
+the valuation-date price. Accrued was right, but for a settlement after a
+coupon date the price still included coupons the buyer doesn't get, and
+every payment was discounted over the extra gap. 10Y 2%, valued
+2026-08-31, settled 2027-10-14: 91.9398 dirty; the bond's correct value on
+the same curve is 93.9888 dirty, 93.7477 clean (accrued 0.2411 either way).
+
+**What it does now.** Dirty = the present value, discounted from the
+settlement date, of every payment strictly after settlement:
+
+```
+tau        = (settlement - valuation).days / 365
+kept       = payments whose coupon date > settlement
+dirty      = sum( cash_flow × DF(t - tau) )   over kept payments
+clean      = dirty - accrued
+```
+
+- A payment on the settlement date goes to the seller, the same rule that
+  makes accrued 0 there. Dirty drops by about one coupon across a coupon
+  date and clean barely moves.
+- Times are `price_bond`'s own, shifted by `tau`, not recomputed from
+  calendar dates. With settlement = valuation, `tau` = 0 and dirty equals
+  `price_bond` exactly (recomputing from dates would give 182/365 instead
+  of 0.5 and move every price slightly). Kept payments always have
+  `t - tau` > 0.
+- Discounting is `discount_factors_at`, the same as `price_bond`, on either
+  basis. `price_bond` itself is unchanged, so KRD, DV01, PCA, VaR and
+  Phase 4.6B's YTM are unaffected.
+- **The curve is the valuation date's.** A far-off settlement is priced as
+  if the curve hadn't moved, so `dirty_price` warns when settlement is more
+  than `SETTLEMENT_WARNING_DAYS` (30) days after valuation. 30 is a
+  judgment call, not a market convention; it catches the likely accident
+  (valuation pinned to the snapshot, settlement left at today) while
+  allowing a deliberate what-if.
+- `dirty_price_portfolio`'s `clean_price` column is now dirty − accrued at
+  settlement. At the default it equals `price_portfolio`'s price, which the
+  app relies on.
+
+This also closes most of the T+1/T+2 gap a short settlement used to leave
+(clean at valuation, accrued at settlement): both are now at settlement.
+
 **Accepted date formats.** Either date can be a `date`, `None` (today), or
 a string. Strings go through `config.portfolio_loader.parse_date`, the
 same parser `load_portfolio()` uses: ISO, `YYYY/MM/DD`, Japanese era
@@ -351,14 +405,33 @@ most one day's accrual, coupon ÷ 365 (about 0.01 per 100 at a 3.5%
 coupon), once every four years. Confirm against a JSDA primary source
 before the SR 11-7 report.
 
-**6.7 A fractional maturity gets a short first period, which understates
-accrued.** `cash_flow_schedule` counts back from maturity, so a 1.3-year
-bond pays at 0.3, 0.8 and 1.3 years and period 0 is only 0.3 years (110
-days). Accrued starts at 0 on `valuation_date`, but a real bond with 1.3
-years left would already be 0.2 years (about 73 days) into its period.
-The illustrative portfolio uses whole years only, so no figure here is
-affected; it matters once maturities come from real `maturity_date`s
-(Phase 8). Real coupon dates (§7) remove it.
+**6.7 A real-dated bond's schedule is wrong, in pricing as well as
+accrued.** The illustrative portfolio uses whole years only, so no figure
+here is affected; this matters once maturities come from real
+`maturity_date`s (Phase 2A supports them; Phase 8 uses them). Two effects,
+one cause: the schedule knows only how many years are left, not the real
+coupon calendar.
+
+- **The next coupon can be dropped.** `cash_flow_schedule` makes
+  `round(maturity_years × freq)` payments counted back from maturity, so
+  the first one always lands 0.25–0.75 periods out. A real bond whose next
+  coupon is closer loses it: 2Y #470 (0.8%, coupons 1 Mar / 1 Sep, matures
+  2027-03-01) valued 2026-08-10 has 0.556 years left, gets one payment, and
+  drops the 2026-09-01 coupon. Dirty comes out 99.57 against a correct
+  99.97 (snapshot curve), short by the whole coupon.
+- **Accrued restarts at the valuation date.** Boundary 0 is the valuation
+  date, so accrued is 0 there instead of counting from the last real coupon
+  (1.3 years left: period 0 is 110 days, when the bond is really about 73
+  days into a period).
+- **So `price_bond`'s output is the dirty price, not the clean one.** The
+  present value of the remaining cash flows is the dirty price; it equals
+  clean only on a coupon date. #470 valued 2026-05-20 (no coupon dropped):
+  `price_bond` gives 99.632, which is the real dirty price; the real clean
+  price is 99.457, lower by the accrued 0.175, and the model shows accrued
+  0.
+
+Phase 8 must build the schedule from the real coupon calendar (§7) for
+pricing and accrued together, then take clean = dirty − accrued.
 
 ---
 

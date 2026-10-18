@@ -24,13 +24,12 @@ inverts, via models.bootstrap.implied_ytm -- is anchored at t=0 = "a
 coupon just occurred", exactly the clean price's own assumption. Real-
 market practice conventionally solves YTM against the DIRTY price instead,
 discounting from the actual settlement date with a genuine fractional
-first coupon period. This project's dirty_price() does NOT rebuild the
-cash-flow schedule from settlement_date to do that -- it adds a
-separately prorated accrued_interest() on top of the SAME t=0-anchored
-schedule (docs/phase_4_6a_documentation.md §3) -- so solving this
-module's flat-yield equation against the dirty price would mix two
-different schedule assumptions into one root-find, which would be a
-worse-hidden error than being explicit about using the clean price. See
+first coupon period. YTM here is solved at the valuation date, where this
+project's schedule puts a coupon date, so clean and dirty are the same
+number and the choice makes no difference for the illustrative bonds.
+(dirty_price() has discounted from settlement_date since 2026-10-18, but
+on the same t=0-anchored schedule shifted, not a real fractional first
+period; real coupon calendars are Phase 8.) See
 docs/phase_4_6b_documentation.md §1 for the full account of this disclosed
 simplification.
 

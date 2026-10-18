@@ -15,6 +15,7 @@ All curve loading uses prefer_live=False for determinism.
 
 from __future__ import annotations
 
+import warnings
 from datetime import date, timedelta
 
 import numpy as np
@@ -24,10 +25,12 @@ import pytest
 from config.portfolio_loader import load_portfolio
 from data.jgb_curve_loader import _MOF_TENOR_COLUMNS, load_jgb_curve
 from models.bond_pricing import (
+    SETTLEMENT_WARNING_DAYS,
     _coupon_boundaries,
     accrued_interest,
     accrued_interest_portfolio,
     cash_flow_schedule,
+    clean_price,
     curve_yield_at,
     dirty_price,
     dirty_price_portfolio,
@@ -557,24 +560,77 @@ def test_accrued_interest_divides_by_365_not_by_the_period_length():
 
 def test_dirty_minus_clean_equals_accrued():
     curve = load_jgb_curve(prefer_live=False)
-    boundaries = _coupon_boundaries(10.0, _VAL_DATE, freq=2)
-    settlement = boundaries[0] + timedelta(days=45)
+    settlement = _VAL_DATE + timedelta(days=20)
+    kwargs = dict(valuation_date=_VAL_DATE, settlement_date=settlement)
 
-    clean = price_bond(100.0, 0.025, 10.0, curve)
-    ai = accrued_interest(100.0, 0.025, 10.0, valuation_date=_VAL_DATE, settlement_date=settlement)
-    dirty = dirty_price(
-        100.0, 0.025, 10.0, curve, valuation_date=_VAL_DATE, settlement_date=settlement
-    )
+    clean = clean_price(100.0, 0.025, 10.0, curve, **kwargs)
+    ai = accrued_interest(100.0, 0.025, 10.0, **kwargs)
+    dirty = dirty_price(100.0, 0.025, 10.0, curve, **kwargs)
     assert dirty - clean == pytest.approx(ai)
 
 
+def test_dirty_price_is_priced_from_settlement_not_valuation():
+    # The user's walkthrough: 10Y 2%, valued 2026-08-31, settled 2027-10-14.
+    # The buyer receives only the 18 payments from 2028-03-01, discounted
+    # over ~8.88 years. Until 2026-10-18 this returned price_bond (valued
+    # 2026-08-31, two already-paid coupons included) + accrued = 91.9398.
+    curve = load_jgb_curve(prefer_live=False)
+    kwargs = dict(valuation_date=date(2026, 8, 31), settlement_date=date(2027, 10, 14))
+    with pytest.warns(UserWarning, match="as if it hadn't moved"):
+        dirty = dirty_price(100.0, 0.02, 10.0, curve, **kwargs)
+    assert accrued_interest(100.0, 0.02, 10.0, **kwargs) == pytest.approx(100 * 0.02 * 44 / 365)
+    assert dirty == pytest.approx(93.9888, abs=1e-4)
+    assert dirty - accrued_interest(100.0, 0.02, 10.0, **kwargs) == pytest.approx(93.7477, abs=1e-4)
+
+
+def test_a_coupon_paid_on_the_settlement_date_goes_to_the_seller():
+    # Dirty drops by about one coupon (1.0) across the coupon date; clean
+    # barely moves, because accrued resets to 0 at the same moment.
+    curve = load_jgb_curve(prefer_live=False)
+    coupon_date = _coupon_boundaries(10.0, _VAL_DATE, freq=2)[1]
+    # Same valuation date both times, so both runs share one calendar.
+    before = dict(valuation_date=_VAL_DATE, settlement_date=coupon_date - timedelta(days=1))
+    on = dict(valuation_date=_VAL_DATE, settlement_date=coupon_date)
+    with pytest.warns(UserWarning):
+        dirty_before = dirty_price(100.0, 0.02, 10.0, curve, **before)
+        dirty_on = dirty_price(100.0, 0.02, 10.0, curve, **on)
+        clean_before = clean_price(100.0, 0.02, 10.0, curve, **before)
+        clean_on = clean_price(100.0, 0.02, 10.0, curve, **on)
+    assert 0.95 < dirty_before - dirty_on < 1.0
+    assert abs(clean_on - clean_before) < 0.01
+
+
+def test_dirty_price_is_zero_on_the_redemption_day():
+    curve = load_jgb_curve(prefer_live=False)
+    maturity = _coupon_boundaries(2.0, _VAL_DATE, freq=2)[-1]
+    with pytest.warns(UserWarning):
+        assert dirty_price(100.0, 0.02, 2.0, curve, valuation_date=_VAL_DATE, settlement_date=maturity) == 0.0
+
+
+def test_dirty_price_warns_only_beyond_the_settlement_gap_limit():
+    curve = load_jgb_curve(prefer_live=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        dirty_price(
+            100.0, 0.02, 10.0, curve,
+            valuation_date=_VAL_DATE,
+            settlement_date=_VAL_DATE + timedelta(days=SETTLEMENT_WARNING_DAYS),
+        )
+    with pytest.warns(UserWarning, match="31 days after"):
+        dirty_price(
+            100.0, 0.02, 10.0, curve,
+            valuation_date=_VAL_DATE,
+            settlement_date=_VAL_DATE + timedelta(days=SETTLEMENT_WARNING_DAYS + 1),
+        )
+
+
 def test_dirty_price_equals_clean_price_at_the_default_settlement_date():
-    # No settlement_date passed -> reproduces price_bond's own clean price
-    # exactly, since accrued is 0 at the default (module docstring).
+    # No settlement_date passed -> reproduces price_bond exactly (same
+    # times, same discount factors), since accrued is 0 at the default.
     curve = load_jgb_curve(prefer_live=False)
     clean = price_bond(100.0, 0.025, 10.0, curve)
-    dirty = dirty_price(100.0, 0.025, 10.0, curve)
-    assert dirty == pytest.approx(clean)
+    assert dirty_price(100.0, 0.025, 10.0, curve) == clean
+    assert clean_price(100.0, 0.025, 10.0, curve) == clean
 
 
 def test_accrued_interest_rejects_non_positive_inputs_like_price_bond_does():

@@ -89,8 +89,10 @@ sum of discounted future cash flows, on the implicit assumption (built
 into the cash-flow schedule below) that "now" is exactly a coupon date, so
 zero interest has yet accrued. Two new functions build on it without
 touching it: accrued_interest() (annual coupon x elapsed days / 365 --
-ACT/365, the JGB convention, models/day_count.py) and dirty_price() (= price_bond() +
-accrued_interest(), what settlement actually pays). See
+ACT/365, the JGB convention, models/day_count.py) and dirty_price() (what
+settlement actually pays: the cash flows after settlement, discounted from
+the settlement date; equals price_bond() when settlement is the valuation
+date). clean_price() = dirty_price() - accrued_interest(). See
 docs/phase_4_6a_documentation.md for why settlement/accrued live in two
 new functions rather than as new parameters on price_bond itself, and for
 the coupon-date edge cases (on a coupon date, before a bond's first
@@ -99,6 +101,7 @@ coupon, and the ex-coupon question) handled explicitly there.
 
 from __future__ import annotations
 
+import warnings
 from datetime import date, timedelta
 from functools import lru_cache
 
@@ -268,7 +271,9 @@ def price_bond(
     Cash flow schedule: `freq` payments per year, built BACKWARD from
     maturity_years so the final payment lands exactly there. A maturity
     that isn't an exact multiple of 1/freq (e.g. derived from a real
-    redemption date) just gets one shorter first period, not an error.
+    redemption date) gets round(maturity x freq) payments, so the first
+    one lands 0.25-0.75 periods out: a real bond whose next coupon is
+    closer than that loses it (docs/phase_4_6a_documentation.md §6.7).
 
     Parameters
     ----------
@@ -401,6 +406,41 @@ def _coupon_boundaries(maturity_years: float, valuation_date: date, freq: int) -
     ]
 
 
+# dirty_price() warns when settlement is more than this many days after
+# valuation: the curve is the valuation date's, so a far-off settlement is
+# priced as if the curve hadn't moved. A judgment call, not a convention.
+SETTLEMENT_WARNING_DAYS = 30
+
+
+def _settlement_calendar(
+    maturity_years: float,
+    freq: int,
+    valuation_date: str | date | None,
+    settlement_date: str | date | None,
+) -> tuple[date, date, list[date]]:
+    """Resolve and check the two dates; return (valuation, settlement,
+    coupon boundaries). Shared by accrued_interest() and dirty_price() so
+    both apply the same date rules to the same calendar."""
+    if maturity_years <= 0:
+        raise ValueError(f"maturity_years must be positive, got {maturity_years}")
+    if freq <= 0:
+        raise ValueError(f"freq must be positive, got {freq}")
+
+    valuation = _resolve_date(valuation_date)
+    settlement = _resolve_date(settlement_date) if settlement_date is not None else valuation
+    if settlement < valuation:
+        raise ValueError(
+            f"settlement_date {settlement} precedes valuation_date {valuation}"
+        )
+
+    boundaries = _coupon_boundaries(maturity_years, valuation, freq)
+    if settlement > boundaries[-1]:
+        raise ValueError(
+            f"settlement_date {settlement} is after the bond's maturity date {boundaries[-1]}"
+        )
+    return valuation, settlement, boundaries
+
+
 def accrued_interest(
     face_value: float,
     coupon_rate: float,
@@ -473,23 +513,9 @@ def accrued_interest(
     """
     if face_value <= 0:
         raise ValueError(f"face_value must be positive, got {face_value}")
-    if maturity_years <= 0:
-        raise ValueError(f"maturity_years must be positive, got {maturity_years}")
-    if freq <= 0:
-        raise ValueError(f"freq must be positive, got {freq}")
-
-    valuation = _resolve_date(valuation_date)
-    settlement = _resolve_date(settlement_date) if settlement_date is not None else valuation
-    if settlement < valuation:
-        raise ValueError(
-            f"settlement_date {settlement} precedes valuation_date {valuation}"
-        )
-
-    boundaries = _coupon_boundaries(maturity_years, valuation, freq)
-    if settlement > boundaries[-1]:
-        raise ValueError(
-            f"settlement_date {settlement} is after the bond's maturity date {boundaries[-1]}"
-        )
+    _, settlement, boundaries = _settlement_calendar(
+        maturity_years, freq, valuation_date, settlement_date
+    )
     if settlement == boundaries[-1]:
         return 0.0  # redemption day itself -- the final period has just closed
 
@@ -516,21 +542,75 @@ def dirty_price(
     day_count_convention: str = day_count.ACT_365,
     basis: str | None = None,
 ) -> float:
-    """Dirty price: what settlement actually pays. = price_bond() (the
-    quoted, clean price) + accrued_interest() (this module's own two new
-    functions, both above) -- computed by calling each independently and
-    adding the results, not by re-deriving either inside this function."""
-    clean = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq, basis=basis)
-    accrued = accrued_interest(
-        face_value,
-        coupon_rate,
-        maturity_years,
+    """Dirty price: what the buyer pays on `settlement_date`. The present
+    value, discounted FROM the settlement date, of the cash flows the buyer
+    receives -- every payment strictly after settlement. A payment ON the
+    settlement date goes to the seller, matching accrued_interest() == 0
+    there.
+
+    Times are price_bond's own schedule shifted by the valuation-to-
+    settlement gap (t - days/365), not recomputed from calendar dates, so
+    with settlement == valuation_date (the default) this returns
+    price_bond() exactly. Until 2026-10-18 this was price_bond() +
+    accrued_interest(): the clean part stayed at valuation_date, so a later
+    settlement still counted coupons already paid and discounted over the
+    gap (docs/phase_4_6a_documentation.md §4.1).
+
+    The curve is the valuation date's; settlement more than
+    SETTLEMENT_WARNING_DAYS later warns, since that prices as if the curve
+    hadn't moved. `day_count_convention` is checked here and used by
+    accrued_interest(); the discounting time axis is ACT/365 (days / 365)
+    either way."""
+    if face_value <= 0:
+        raise ValueError(f"face_value must be positive, got {face_value}")
+    if curve.empty:
+        raise ValueError("curve is empty -- cannot price against it")
+    day_count._validate_convention(day_count_convention)
+    valuation, settlement, boundaries = _settlement_calendar(
+        maturity_years, freq, valuation_date, settlement_date
+    )
+    gap_days = (settlement - valuation).days
+    if gap_days > SETTLEMENT_WARNING_DAYS:
+        warnings.warn(
+            f"settlement_date {settlement} is {gap_days} days after valuation_date "
+            f"{valuation}; priced on the valuation date's curve, as if it hadn't moved",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    n_periods, cash_flow_times = cash_flow_schedule(maturity_years, freq)
+    cash_flows = np.full(n_periods, face_value * coupon_rate / freq, dtype=float)
+    cash_flows[-1] += face_value
+
+    received = np.array([d > settlement for d in boundaries[1:]])
+    if not received.any():
+        return 0.0  # settlement on the redemption day: nothing left to receive
+    times_from_settlement = cash_flow_times[received] - gap_days / DAYS_PER_YEAR
+    factors = discount_factors_at(curve, times_from_settlement, basis=basis)
+    return float(np.sum(cash_flows[received] * factors))
+
+
+def clean_price(
+    face_value: float,
+    coupon_rate: float,
+    maturity_years: float,
+    curve: pd.DataFrame,
+    freq: int = 2,
+    valuation_date: str | date | None = None,
+    settlement_date: str | date | None = None,
+    day_count_convention: str = day_count.ACT_365,
+    basis: str | None = None,
+) -> float:
+    """Clean price at `settlement_date`: dirty_price() - accrued_interest().
+    Equals price_bond() when settlement is the valuation date (the default)."""
+    kwargs = dict(
         freq=freq,
         valuation_date=valuation_date,
         settlement_date=settlement_date,
         day_count_convention=day_count_convention,
     )
-    return clean + accrued
+    dirty = dirty_price(face_value, coupon_rate, maturity_years, curve, basis=basis, **kwargs)
+    return dirty - accrued_interest(face_value, coupon_rate, maturity_years, **kwargs)
 
 
 def accrued_interest_portfolio(
@@ -579,17 +659,15 @@ def dirty_price_portfolio(
     day_count_convention: str = day_count.ACT_365,
     basis: str | None = None,
 ) -> pd.DataFrame:
-    """price_portfolio() and accrued_interest_portfolio() combined into one
-    table: one row per bond, columns [name, maturity_years, coupon_rate,
-    weight, clean_price, accrued_interest, dirty_price]. Computed by
-    joining the two existing functions' own output on bond name/order
-    (both already iterate `portfolio` in the same order), not by
-    reimplementing either calculation.
+    """dirty_price() and accrued_interest() for every bond, one row per
+    bond in portfolio order, columns [name, maturity_years, coupon_rate,
+    weight, clean_price, accrued_interest, dirty_price]. clean_price is
+    dirty - accrued AT SETTLEMENT; at the default settlement date it equals
+    price_portfolio()'s price.
 
-    freq : forwarded unchanged to both -- None (default) means each bond
-    prices and accrues at its own bond.freq; an explicit int overrides
-    every bond to that one shared frequency."""
-    clean = price_portfolio(portfolio, curve, freq=freq, basis=basis)
+    freq : None (default) means each bond prices and accrues at its own
+    bond.freq; an explicit int overrides every bond to that one shared
+    frequency."""
     accrued = accrued_interest_portfolio(
         portfolio,
         freq=freq,
@@ -597,9 +675,24 @@ def dirty_price_portfolio(
         settlement_date=settlement_date,
         day_count_convention=day_count_convention,
     )
-    result = clean.rename(columns={"price": "clean_price"})
+    dirty = [
+        dirty_price(
+            bond.face_value,
+            bond.coupon_rate,
+            bond.maturity_years,
+            curve,
+            freq=freq if freq is not None else bond.freq,
+            valuation_date=valuation_date,
+            settlement_date=settlement_date,
+            day_count_convention=day_count_convention,
+            basis=basis,
+        )
+        for bond in portfolio
+    ]
+    result = accrued.drop(columns="accrued_interest")
+    result["clean_price"] = np.array(dirty) - accrued["accrued_interest"].to_numpy()
     result["accrued_interest"] = accrued["accrued_interest"]
-    result["dirty_price"] = result["clean_price"] + result["accrued_interest"]
+    result["dirty_price"] = dirty
     return result
 
 
