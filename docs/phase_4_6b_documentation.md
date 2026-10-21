@@ -78,8 +78,8 @@ period. Here YTM is solved at the valuation date, which this project's
 schedule treats as a coupon date, so clean and dirty are the same number
 and the choice makes no difference for the illustrative bonds. (When this
 phase was built, `dirty_price()` added accrued on top of the
-valuation-date price; since 2026-10-18 it discounts from the settlement
-date, on the same `t=0`-anchored schedule shifted rather than a real
+valuation-date price; since 2026-10-18 it prices at the settlement date
+as a forward price, on the same `t=0`-anchored schedule rather than a real
 fractional first period, `docs/phase_4_6a_documentation.md` §4.1.) For a
 real-dated bond, clean ≠ dirty at valuation and `price_bond`'s output is
 the dirty price, so this needs revisiting with real coupon calendars

@@ -14,13 +14,15 @@
 > time (Phase 2A). See §3. No figure in this doc changes: every accrued
 > figure shown is at the default settlement date, where accrued is zero.
 
-> **Dirty price now priced from settlement (2026-10-18):** `dirty_price()`
-> was `price_bond()` + accrued, so the clean part stayed at the valuation
-> date: a settlement months later still counted coupons already paid and
-> discounted over the gap (10Y 2%, valued 2026-08-31, settled 2027-10-14:
-> 91.94 instead of 93.99). It now discounts the payments after settlement
-> from the settlement date; new `clean_price()` = dirty − accrued. At the
-> default settlement date nothing changes. See §4.1.
+> **Dirty price now priced at settlement (2026-10-18, corrected
+> 2026-10-21):** `dirty_price()` was `price_bond()` + accrued, so a
+> settlement months later still counted coupons already paid. It now
+> prices the payments after settlement as a forward price: their PV today
+> ÷ DF(settlement gap). New `clean_price()` = dirty − accrued. A first
+> version (2026-10-18) discounted from settlement at DF(t − tau) instead,
+> which assumes the curve won't move. 10Y 2%, valued 2026-08-31, settled
+> 2027-10-14: 91.94 originally, 93.99 in that first version, 91.27 now.
+> At the default settlement date nothing changes. See §4.1.
 
 ## In plain English
 
@@ -50,9 +52,8 @@ of the existing, untouched pricing engine. `price_bond()` (Phase 2B) is
 unchanged — signature and behavior both — and continues to return what
 this phase now documents explicitly as the bond's **clean** price. Two new
 functions in the same file build on it: `accrued_interest()` and
-`dirty_price()` (the payments after settlement, discounted from the
-settlement date; `price_bond() + accrued_interest()` until 2026-10-18,
-§4.1), plus `clean_price()` (= dirty − accrued) and portfolio-level
+`dirty_price()` (the forward price at settlement of the payments after
+settlement; `price_bond() + accrued_interest()` until 2026-10-18, §4.1), plus `clean_price()` (= dirty − accrued) and portfolio-level
 versions. A new small module, `models/day_count.py`,
 supplies the day count convention (Actual/365) both new functions use.
 
@@ -260,49 +261,61 @@ produces that.
   can be documented as the clean price without any code change to it
   (§1) — clean and dirty coincide exactly at the default, by construction.
 
-### 4.1 Pricing from the settlement date (2026-10-18)
+### 4.1 Pricing at the settlement date (2026-10-18, corrected 2026-10-21)
 
 **What was wrong.** `dirty_price()` was `price_bond()` + `accrued_interest()`.
 `price_bond` never sees the settlement date, so the clean part was always
 the valuation-date price. Accrued was right, but for a settlement after a
-coupon date the price still included coupons the buyer doesn't get, and
-every payment was discounted over the extra gap. 10Y 2%, valued
-2026-08-31, settled 2027-10-14: 91.9398 dirty; the bond's correct value on
-the same curve is 93.9888 dirty, 93.7477 clean (accrued 0.2411 either way).
+coupon date the price still included coupons the buyer doesn't get. 10Y
+2%, valued 2026-08-31, settled 2027-10-14: 91.9398 dirty, with two
+already-paid coupons in it.
 
-**What it does now.** Dirty = the present value, discounted from the
-settlement date, of every payment strictly after settlement:
+**What it does now.** The deal is agreed on the valuation date and paid on
+the settlement date. The buyer receives every payment strictly after
+settlement. A fair price makes the two sides worth the same today:
 
 ```
-tau        = (settlement - valuation).days / 365
-kept       = payments whose coupon date > settlement
-dirty      = sum( cash_flow × DF(t - tau) )   over kept payments
-clean      = dirty - accrued
+tau    = (settlement - valuation).days / 365
+kept   = payments whose coupon date > settlement
+PV of kept payments today   = dirty x DF(tau)
+dirty  = sum( cash_flow x DF(t) ) over kept  /  DF(tau)
+clean  = dirty - accrued
 ```
+
+This is the forward price. It uses only the valuation date's curve and
+assumes nothing about where rates go. Same example: **91.2678** dirty,
+91.0267 clean, accrued 0.2411.
 
 - A payment on the settlement date goes to the seller, the same rule that
   makes accrued 0 there. Dirty drops by about one coupon across a coupon
   date and clean barely moves.
-- Times are `price_bond`'s own, shifted by `tau`, not recomputed from
-  calendar dates. With settlement = valuation, `tau` = 0 and dirty equals
-  `price_bond` exactly (recomputing from dates would give 182/365 instead
-  of 0.5 and move every price slightly). Kept payments always have
-  `t - tau` > 0.
+- With settlement = valuation, tau = 0, DF(0) = 1, and dirty equals
+  `price_bond` exactly.
 - Discounting is `discount_factors_at`, the same as `price_bond`, on either
   basis. `price_bond` itself is unchanged, so KRD, DV01, PCA, VaR and
   Phase 4.6B's YTM are unaffected.
-- **The curve is the valuation date's.** A far-off settlement is priced as
-  if the curve hadn't moved, so `dirty_price` warns when settlement is more
-  than `SETTLEMENT_WARNING_DAYS` (30) days after valuation. 30 is a
-  judgment call, not a market convention; it catches the likely accident
-  (valuation pinned to the snapshot, settlement left at today) while
-  allowing a deliberate what-if.
-- `dirty_price_portfolio`'s `clean_price` column is now dirty − accrued at
+- Clean drifts **down** between coupon dates here (91.6987 at valuation,
+  91.6952 at T+2): accrued grows at the 2% coupon, faster than the cost of
+  carrying the price at short rates. That is positive carry, not an error.
+- `dirty_price` warns when settlement is more than
+  `SETTLEMENT_WARNING_DAYS` (30) days after valuation: the result is then a
+  forward price, not a T+1/T+2 trade, which usually means a mismatched
+  `valuation_date` (pinned to the snapshot, settlement left at today). 30
+  is a judgment call, not a market convention.
+- `dirty_price_portfolio`'s `clean_price` column is dirty − accrued at
   settlement. At the default it equals `price_portfolio`'s price, which the
   app relies on.
 
-This also closes most of the T+1/T+2 gap a short settlement used to leave
-(clean at valuation, accrued at settlement): both are now at settlement.
+**The first fix was the wrong convention (2026-10-18 to 2026-10-21).** It
+discounted each kept payment from the settlement date at DF(t − tau),
+reading today's curve at the shorter times. That assumes the curve on the
+settlement date looks like today's, so each payment rolls down a rising
+curve to a lower rate: 93.9888 dirty in the example, 2.72 above the
+forward price (0.014 at T+2). That is a scenario ("what is the bond worth
+then if the curve doesn't move?"), which belongs in carry/rolldown
+analysis, not the price of a trade agreed today. An earlier version of
+this section called 93.99 the bond's correct value; it is the rolldown
+number.
 
 **Accepted date formats.** Either date can be a `date`, `None` (today), or
 a string. Strings go through `config.portfolio_loader.parse_date`, the

@@ -569,18 +569,28 @@ def test_dirty_minus_clean_equals_accrued():
     assert dirty - clean == pytest.approx(ai)
 
 
-def test_dirty_price_is_priced_from_settlement_not_valuation():
+def test_dirty_price_is_the_forward_price_at_settlement():
     # The user's walkthrough: 10Y 2%, valued 2026-08-31, settled 2027-10-14.
-    # The buyer receives only the 18 payments from 2028-03-01, discounted
-    # over ~8.88 years. Until 2026-10-18 this returned price_bond (valued
-    # 2026-08-31, two already-paid coupons included) + accrued = 91.9398.
+    # The buyer gets the 18 payments from 2028-03-01; fair price = their PV
+    # today / DF(settlement gap). Was 91.9398 (price_bond + accrued, paid
+    # coupons kept) until 2026-10-18, then 93.9888 (discounted at
+    # DF(t - tau): assumes the curve won't move) until 2026-10-21.
     curve = load_jgb_curve(prefer_live=False)
-    kwargs = dict(valuation_date=date(2026, 8, 31), settlement_date=date(2027, 10, 14))
-    with pytest.warns(UserWarning, match="as if it hadn't moved"):
+    v, s = date(2026, 8, 31), date(2027, 10, 14)
+    kwargs = dict(valuation_date=v, settlement_date=s)
+    with pytest.warns(UserWarning, match="forward price"):
         dirty = dirty_price(100.0, 0.02, 10.0, curve, **kwargs)
-    assert accrued_interest(100.0, 0.02, 10.0, **kwargs) == pytest.approx(100 * 0.02 * 44 / 365)
-    assert dirty == pytest.approx(93.9888, abs=1e-4)
-    assert dirty - accrued_interest(100.0, 0.02, 10.0, **kwargs) == pytest.approx(93.7477, abs=1e-4)
+
+    n, times = cash_flow_schedule(10.0, 2)
+    flows = np.full(n, 1.0)
+    flows[-1] += 100.0
+    kept = np.array([d > s for d in _coupon_boundaries(10.0, v, 2)[1:]])
+    tau = (s - v).days / 365
+    expected = (flows[kept] * discount_factors_at(curve, times[kept])).sum() / discount_factors_at(curve, [tau])[0]
+
+    assert kept.sum() == 18
+    assert dirty == pytest.approx(expected)
+    assert dirty == pytest.approx(91.2678, abs=1e-4)
 
 
 def test_a_coupon_paid_on_the_settlement_date_goes_to_the_seller():

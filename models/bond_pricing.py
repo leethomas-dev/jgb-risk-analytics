@@ -407,8 +407,9 @@ def _coupon_boundaries(maturity_years: float, valuation_date: date, freq: int) -
 
 
 # dirty_price() warns when settlement is more than this many days after
-# valuation: the curve is the valuation date's, so a far-off settlement is
-# priced as if the curve hadn't moved. A judgment call, not a convention.
+# valuation: the result is then a forward price for a deal agreed on the
+# valuation date, not a normal T+1/T+2 trade -- usually a mismatched
+# valuation_date. A judgment call, not a convention.
 SETTLEMENT_WARNING_DAYS = 30
 
 
@@ -542,25 +543,28 @@ def dirty_price(
     day_count_convention: str = day_count.ACT_365,
     basis: str | None = None,
 ) -> float:
-    """Dirty price: what the buyer pays on `settlement_date`. The present
-    value, discounted FROM the settlement date, of the cash flows the buyer
-    receives -- every payment strictly after settlement. A payment ON the
-    settlement date goes to the seller, matching accrued_interest() == 0
-    there.
+    """Dirty price: what the buyer pays on `settlement_date` for a deal
+    agreed on `valuation_date`, using only the valuation date's curve.
 
-    Times are price_bond's own schedule shifted by the valuation-to-
-    settlement gap (t - days/365), not recomputed from calendar dates, so
-    with settlement == valuation_date (the default) this returns
-    price_bond() exactly. Until 2026-10-18 this was price_bond() +
-    accrued_interest(): the clean part stayed at valuation_date, so a later
-    settlement still counted coupons already paid and discounted over the
-    gap (docs/phase_4_6a_documentation.md §4.1).
+    The buyer receives every payment strictly after settlement (a payment
+    ON the settlement date goes to the seller, matching accrued_interest()
+    == 0 there). Fair price: PV today of those payments = PV today of the
+    settlement payment, so
 
-    The curve is the valuation date's; settlement more than
-    SETTLEMENT_WARNING_DAYS later warns, since that prices as if the curve
-    hadn't moved. `day_count_convention` is checked here and used by
-    accrued_interest(); the discounting time axis is ACT/365 (days / 365)
-    either way."""
+        dirty = sum(cash_flow x DF(t)) / DF(tau),   tau = settlement gap
+
+    -- the forward price. With settlement == valuation_date (the default)
+    tau = 0 and this is price_bond() exactly.
+
+    History (docs/phase_4_6a_documentation.md §4.1): until 2026-10-18 this
+    was price_bond() + accrued_interest(), which kept coupons already paid
+    before settlement. For three days after that it discounted from
+    settlement at DF(t - tau), which assumes the curve won't move (rolldown,
+    a scenario, not a price).
+
+    Settlement more than SETTLEMENT_WARNING_DAYS after valuation warns.
+    `day_count_convention` is checked here and used by accrued_interest();
+    the discounting time axis is ACT/365 (days / 365) either way."""
     if face_value <= 0:
         raise ValueError(f"face_value must be positive, got {face_value}")
     if curve.empty:
@@ -573,7 +577,8 @@ def dirty_price(
     if gap_days > SETTLEMENT_WARNING_DAYS:
         warnings.warn(
             f"settlement_date {settlement} is {gap_days} days after valuation_date "
-            f"{valuation}; priced on the valuation date's curve, as if it hadn't moved",
+            f"{valuation}; this is a forward price, not a T+1/T+2 trade -- "
+            "check valuation_date",
             UserWarning,
             stacklevel=2,
         )
@@ -585,9 +590,13 @@ def dirty_price(
     received = np.array([d > settlement for d in boundaries[1:]])
     if not received.any():
         return 0.0  # settlement on the redemption day: nothing left to receive
-    times_from_settlement = cash_flow_times[received] - gap_days / DAYS_PER_YEAR
-    factors = discount_factors_at(curve, times_from_settlement, basis=basis)
-    return float(np.sum(cash_flows[received] * factors))
+    pv_today = float(
+        np.sum(cash_flows[received] * discount_factors_at(curve, cash_flow_times[received], basis=basis))
+    )
+    if gap_days == 0:
+        return pv_today
+    carry = discount_factors_at(curve, [gap_days / DAYS_PER_YEAR], basis=basis)[0]
+    return pv_today / float(carry)
 
 
 def clean_price(
