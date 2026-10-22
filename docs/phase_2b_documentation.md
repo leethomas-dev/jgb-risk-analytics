@@ -161,14 +161,17 @@ any rate this function invents plausible, but it isn't a claim that real
 rates are actually flat beyond the curve's quoted range — the true rate
 out there is genuinely unknown from this data.
 
-**3.4 A maturity that isn't a whole number of periods can drop the next
-coupon (added 2026-10-18).** The schedule makes `round(maturity_years ×
+**3.4 KNOWN DEFECT (dormant, fix deferred to Phase 8): a maturity that
+isn't a whole number of periods can drop the next coupon (added
+2026-10-18).** The schedule makes `round(maturity_years ×
 freq)` payments counted back from maturity, so the first lands 0.25–0.75
 periods out. A real-dated bond whose next coupon is closer than that loses
 it (2Y #470 valued 2026-08-10: the 2026-09-01 coupon is dropped, price
 short by about 0.40). The output is also a dirty price for such a bond,
 not a clean one. The illustrative portfolio uses whole years, so no figure
-is affected; real coupon calendars are Phase 8.
+is affected, but any real `maturity_date` triggers it, and every measure
+built on this function (YTM, duration, KRD, DV01, VaR) inherits it. Real
+coupon calendars are Phase 8.
 `docs/phase_4_6a_documentation.md` §6.7.
 
 ---

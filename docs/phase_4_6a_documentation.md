@@ -418,10 +418,14 @@ most one day's accrual, coupon ÷ 365 (about 0.01 per 100 at a 3.5%
 coupon), once every four years. Confirm against a JSDA primary source
 before the SR 11-7 report.
 
-**6.7 A real-dated bond's schedule is wrong, in pricing as well as
-accrued.** The illustrative portfolio uses whole years only, so no figure
-here is affected; this matters once maturities come from real
-`maturity_date`s (Phase 2A supports them; Phase 8 uses them). Two effects,
+**6.7 KNOWN DEFECT (dormant, fix deferred to Phase 8): a real-dated
+bond's schedule is wrong, in pricing as well as accrued.** This is a defect
+in the current code, not an unbuilt feature: `cash_flow_schedule` is wrong
+for any maturity that isn't a whole number of periods. It doesn't bite
+today only because the illustrative portfolio uses whole years, so no
+figure here is affected. Any real `maturity_date` triggers it (Phase 2A
+already accepts them), and it propagates to everything built on
+`price_bond`: YTM, duration, KRD, DV01 and VaR, not just accrued. Two effects,
 one cause: the schedule knows only how many years are left, not the real
 coupon calendar.
 

@@ -84,7 +84,7 @@ fractional first period, `docs/phase_4_6a_documentation.md` §4.1.) For a
 real-dated bond, clean ≠ dirty at valuation and `price_bond`'s output is
 the dirty price, so this needs revisiting with real coupon calendars
 (Phase 8). This is a **disclosed simplification**, not the
-textbook-standard convention; see §5.1.
+textbook-standard convention; see §6.1.
 
 **Reusing `implied_ytm`, not a new solver.** `models.bootstrap.implied_ytm`
 (Phase 4.5A) already does exactly this — inverts `price_bond` by bisection
@@ -268,15 +268,25 @@ timing).
 
 ## 6. Known limitations (for the SR 11-7 validation report)
 
-**6.1 YTM is solved against the clean price, a disclosed departure from
-standard market practice (§1).** Real-market YTM conventionally uses the
-dirty price with a genuine fractional first period discounted from
-settlement. This project's clean-price choice is the internally
-consistent one given how `dirty_price()` is actually built (an additive
-accrued-interest layer, not a schedule rebuild) — but a reader comparing
-this project's YTM figures against a market data terminal's own YTM for
-the same bond should expect a small, systematic difference for exactly
-this reason, growing with how far settlement sits from a coupon date.
+**6.1 YTM is solved against `price_bond`'s output at the valuation date
+(corrected 2026-10-22).** The code inverts `price_bond`, the present value
+of the remaining cash flows. For the illustrative bonds the valuation
+date is a coupon date, so that number is clean and dirty at once, and the
+YTM is the same either way. Market convention solves YTM against the full
+(dirty) price with a fractional first period; for a real-dated bond
+`price_bond`'s output is already the full price, so the basis would match
+convention, but the schedule would not (next item). An earlier version of
+this item said YTM uses the clean price because `dirty_price()` was "an
+additive accrued-interest layer" and that the gap from market YTM grows
+with distance from a coupon date. Both are out of date: `dirty_price()`
+is now a forward price (Phase 4.6A §4.1), and for this portfolio there is
+no clean/dirty gap at valuation.
+
+**6.1a The dropped-coupon defect propagates into YTM (Phase 2B §3.4,
+Phase 4.6A §6.7).** For a real-dated bond whose next coupon is under
+~0.25 periods away, `price_bond` omits it, so YTM is solved against a
+price short by about a coupon, whichever clean/dirty basis is used.
+Dormant for the whole-year illustrative bonds; fix deferred to Phase 8.
 
 **6.2 Modified duration and effective duration are different sensitivities
 that diverge with real curve slope — a genuine, material effect at the

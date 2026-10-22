@@ -16,9 +16,11 @@ have produced it -- a REPORTING CONVENTION for describing a price that
 was already determined by the curve, not a new input to anything
 upstream. Nothing else in this project ever takes a YTM as an input.
 
-WHICH PRICE YTM IS SOLVED AGAINST: THE CLEAN PRICE (bond_pricing.price_bond's
-own output) -- not the dirty price (bond_pricing.dirty_price(), Phase
-4.6A). Reasoning: price_bond's cash-flow schedule (bond_pricing.
+WHICH PRICE YTM IS SOLVED AGAINST: bond_pricing.price_bond's own output, the
+PV of the remaining cash flows at the valuation date -- not dirty_price()
+(Phase 4.6A). For the illustrative bonds that PV is clean and dirty at once;
+for a real-dated bond it is the full price, and the dropped-coupon defect
+(docs/phase_4_6a_documentation.md §6.7) reaches YTM too. Reasoning: price_bond's cash-flow schedule (bond_pricing.
 cash_flow_schedule) -- and therefore the flat-yield reprice this module
 inverts, via models.bootstrap.implied_ytm -- is anchored at t=0 = "a
 coupon just occurred", exactly the clean price's own assumption. Real-
