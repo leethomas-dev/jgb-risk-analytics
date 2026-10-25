@@ -97,9 +97,13 @@ calculation, just `price_bond` called on two uniformly shifted curves.
 ### 1.4 `key_rate_duration_portfolio(portfolio, curve, freq=None, ...)`
 
 Runs `key_rate_duration_bond` once per holding and combines the results
-into one table, plus a portfolio-level total row equal to each bond's
-weight times its own KRD, summed — the same weighting already used for a
-portfolio-level price (Phase 2B). `freq=None` runs each bond at its own
+into one table, plus a portfolio-level total row: the bonds' KRDs
+averaged by **market value** (weight × price, normalized). A portfolio
+weight scales a bond's 100 face, so a percentage measure has to be
+value-weighted. This is the standard definition of portfolio duration,
+and it keeps portfolio KRD × portfolio value × 1bp equal to the portfolio
+DV01 by tenor (Phase 3B). (Until 2026-10-25 the raw weights were used,
+which overstated portfolio duration by about 2%; see `docs/README.md`.) `freq=None` runs each bond at its own
 `Bond.freq` rather than one frequency shared by the whole portfolio
 (`docs/phase_2b_documentation.md §1.3`); pass an explicit `freq` to
 override every bond to one shared frequency instead.

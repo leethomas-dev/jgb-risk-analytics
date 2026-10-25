@@ -547,8 +547,8 @@ c4.metric(f"{ultra_long.threshold_years:.0f}Y+ DV01 share", f"{ultra_long.dv01_u
 st.caption(
     "DV01: how many currency units the portfolio gains or loses if every rate moves by 0.01%. "
     "Duration: roughly the % price move for a 1% rate move. Convexity: a correction that matters more "
-    "for a bigger rate move. Last figure: how much of the portfolio's total interest-rate risk sits in "
-    "bonds due in 20 years or more -- the 'ultra-long' segment that's a defining feature of the JGB market."
+    "for a bigger rate move. Last figure: how much of the portfolio's total interest-rate risk sits at the "
+    "20-year-and-longer points of the curve -- the 'ultra-long' segment that's a defining feature of the JGB market."
 )
 
 # --- 2. Yield curve -------------------------------------------------------
@@ -618,13 +618,13 @@ st.header("3. Portfolio holdings")
 dirty_df = dirty_price_portfolio(portfolio, curve)
 per_bond_analytics = analytics_df.loc[analytics_df.index != "portfolio_total", ["name", "ytm"]]
 table = dirty_df.merge(per_bond_analytics, on="name").merge(
-    dv01_df[["name", "modified_duration", "dv01"]], on="name"
+    dv01_df[["name", "effective_duration", "dv01"]], on="name"
 )
 table = table.rename(
     columns={
         "name": "Bond", "maturity_years": "Maturity (Y)", "coupon_rate": "Coupon",
         "weight": "Weight", "clean_price": "Clean price", "accrued_interest": "Accrued",
-        "dirty_price": "Dirty price", "ytm": "YTM", "modified_duration": "Modified duration", "dv01": "DV01",
+        "dirty_price": "Dirty price", "ytm": "YTM", "effective_duration": "Effective duration", "dv01": "DV01",
     }
 )
 st.dataframe(
@@ -632,7 +632,7 @@ st.dataframe(
         {
             "Maturity (Y)": "{:.0f}", "Coupon": "{:.3%}", "Weight": "{:.2%}",
             "Clean price": "{:.4f}", "Accrued": "{:.5f}", "Dirty price": "{:.4f}",
-            "YTM": "{:.3%}", "Modified duration": "{:.4f}", "DV01": "{:.6f}",
+            "YTM": "{:.3%}", "Effective duration": "{:.4f}", "DV01": "{:.6f}",
         }
     ),
     hide_index=True,
@@ -641,9 +641,9 @@ st.dataframe(
 st.caption(
     "Clean price is the quoted price; dirty price is what a buyer actually pays, including interest "
     "accrued since the last coupon. Accrued interest is shown as of today (no separate settlement date is "
-    "set here), so it is zero and dirty price equals clean price. Modified duration shown here is the "
+    "set here), so it is zero and dirty price equals clean price. Effective duration is the "
     "curve-based sensitivity DV01 is itself built from (every quoted rate moved together); the headline "
-    "figure above is a second, yield-based measure, which differs at the long end (see the docs for why)."
+    "modified duration above is a second, yield-based measure, which differs at the long end (see the docs for why)."
 )
 
 # --- 4. Key rate duration ---------------------------------------------------

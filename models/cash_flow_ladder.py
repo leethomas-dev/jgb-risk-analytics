@@ -16,9 +16,10 @@ weight" -- i.e. every bond's cash flows (already per its own 100 face
 value, config/portfolio.json) are scaled by that bond's `weight` before
 being summed across the portfolio. This is the SAME aggregation
 price_portfolio's own portfolio-level price already uses
-((df.weight * df.price).sum()) and the same one key_rate_duration_portfolio
-/ dv01_by_tenor_portfolio use for their own "portfolio_total" rows -- not
-a new convention introduced here. As with every other portfolio-level
+((df.weight * df.price).sum()) and the same one dv01_by_tenor_portfolio
+uses for its "portfolio_total" row -- not a new convention introduced
+here. (Percentage totals such as portfolio KRD are market-value weighted
+instead; bond_pricing.market_value_weights.) As with every other portfolio-level
 figure in this project, this is NOT a real position size (Phase 2A's
 portfolio is illustrative; Phase 3B §1.1's own units disclaimer applies
 here identically).
@@ -33,10 +34,9 @@ one-line formula here rather than importing bond_pricing's private
 _coupon_boundaries(), which returns period BOUNDARIES for accrued-
 interest lookups (including the valuation-date anchor itself), a
 different shape than the plain per-cash-flow date list this module
-needs. This mirrors Phase 4.6A's own choice to write a small,
-self-contained _resolve_date() rather than import config.portfolio_loader's
-private _resolve_valuation_date -- small, well-precedented duplication
-over a private cross-module dependency.
+needs. Date strings are parsed by config.portfolio_loader.parse_date, the
+same parser bond_pricing uses, so a valuation_date accepted there (ISO,
+YYYY/MM/DD, Japanese era dates, ...) is accepted here too.
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from config.portfolio_loader import DAYS_PER_YEAR, Bond, load_portfolio
+from config.portfolio_loader import DAYS_PER_YEAR, Bond, load_portfolio, parse_date
 from data.jgb_curve_loader import load_jgb_curve
 from models.bond_pricing import cash_flow_schedule, discount_factors_at
 from models.ultra_long_profile import DEFAULT_ULTRA_LONG_THRESHOLD_YEARS
@@ -77,16 +77,14 @@ LADDER_COLUMNS = [
 
 
 def _resolve_date(value: str | date | None) -> date:
-    """None -> today, a date passes through, a str is parsed as ISO --
-    the same small, self-contained normalization Phase 4.6A's
-    bond_pricing._resolve_date already uses, for the same reason (module
-    docstring): avoid a private cross-module import for three lines of
-    logic."""
+    """None -> today, a date passes through, a str is parsed by
+    config.portfolio_loader.parse_date -- the same rules as
+    bond_pricing._resolve_date (was ISO-only until 2026-10-25)."""
     if value is None:
         return date.today()
     if isinstance(value, date):
         return value
-    return date.fromisoformat(str(value))
+    return parse_date(str(value), error_prefix=f"unparseable valuation_date {value!r}")
 
 
 def _bond_cash_flows(

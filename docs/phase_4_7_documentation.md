@@ -426,13 +426,15 @@ at which `accrued_interest()` is exactly `0.0` by construction
 in this dashboard for that reason, disclosed directly in the table's own
 caption.
 
-**9.4 The portfolio table's "Modified duration" column is the
-curve-based (effective) duration, not the analytic (YTM-based) one.**
+**9.4 The portfolio table's duration column is the curve-based
+(effective) duration, not the analytic (YTM-based) one.** It was labelled
+"Modified duration" until 2026-10-25, the same name as the YTM-based
+headline figure; it is now labelled "Effective duration".
 Chosen deliberately for internal consistency with the DV01 column shown
 next to it (`dv01_bond`'s own formula multiplies price by *that* duration
 measure, `docs/phase_3b_documentation.md`) — but `bond_analytics_portfolio`
-also computes a second, YTM-based modified duration that differs slightly
-at the long end (`docs/phase_4_6b_documentation.md` §2); a reader wanting
+also computes a second, YTM-based modified duration that differs at the
+long end (up to ~5% for the 20Y bond on the zero basis) (`docs/phase_4_6b_documentation.md` §2); a reader wanting
 that figure instead needs to look past this table.
 
 **9.5 The visual theme's CSS/JS selectors are Streamlit internals** (§6)

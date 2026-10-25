@@ -75,7 +75,7 @@ import pandas as pd
 
 from config.portfolio_loader import Bond, load_portfolio
 from data.jgb_curve_loader import load_jgb_curve
-from models.bond_pricing import price_bond
+from models.bond_pricing import market_value_weights, price_bond
 
 # 1 basis point, decimal (matches the curve's own decimal convention).
 # Small enough for an accurate local sensitivity estimate; large enough
@@ -228,8 +228,13 @@ def key_rate_duration_portfolio(
 
     Returns a DataFrame: one row per bond (by name, portfolio order) plus
     a final "portfolio_total" row, one column per curve tenor. The total
-    row is each bond's weight times its own KRD, summed -- the same
-    weighting price_portfolio already uses for a portfolio-level price.
+    row is the MARKET-VALUE-weighted average of the bonds' KRDs
+    (bond_pricing.market_value_weights: weight x price, normalized) -- the
+    standard portfolio-duration definition, and the one that keeps
+    portfolio KRD x portfolio value x 1bp equal to the portfolio DV01 by
+    tenor (dv01.dv01_by_tenor_portfolio). Until 2026-10-25 the raw weights
+    were used, which overstated portfolio duration by ~2% (10.666 vs
+    10.478 on the committed snapshot) and left KRD and DV01 inconsistent.
     """
     tenors, curve_sorted = _sorted_tenors_and_curve(curve)
 
@@ -243,8 +248,15 @@ def key_rate_duration_portfolio(
 
     df = pd.DataFrame.from_dict(per_bond, orient="index", columns=pd.Index(tenors, name="maturity_years"))
 
-    weights = np.array([bond.weight for bond in portfolio])
-    df.loc["portfolio_total"] = (df.to_numpy() * weights[:, None]).sum(axis=0)
+    prices = [
+        price_bond(
+            bond.face_value, bond.coupon_rate, bond.maturity_years, curve_sorted,
+            freq=freq if freq is not None else bond.freq, basis=basis,
+        )
+        for bond in portfolio
+    ]
+    mv_weights = market_value_weights([bond.weight for bond in portfolio], prices)
+    df.loc["portfolio_total"] = (df.to_numpy() * mv_weights[:, None]).sum(axis=0)
 
     return df
 

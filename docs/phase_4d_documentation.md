@@ -275,19 +275,28 @@ construction — never netted away, never presented as anything other than
 **Measured across all 485 days in the project's default window**
 (`prefer_live=False`):
 
-| | bp of price |
-| --- | --- |
-| Mean \|residual\| | 1.24bp |
-| Median \|residual\| | 0.83bp |
-| 95th percentile \|residual\| | 3.92bp |
-| Max \|residual\| | 12.32bp |
-| Mean \|actual daily P&L\| | 22.81bp |
-| Median \|actual daily P&L\| | 16.75bp |
+| | bp of price | before 2026-10-25 fix |
+| --- | --- | --- |
+| Mean \|residual\| | 0.79bp | 1.24bp |
+| Median \|residual\| | 0.58bp | 0.83bp |
+| 95th percentile \|residual\| | 2.27bp | 3.92bp |
+| Max \|residual\| | 5.25bp | 12.32bp |
+| Mean \|actual daily P&L\| | 22.81bp | 22.81bp |
+| Median \|actual daily P&L\| | 16.75bp | 16.75bp |
 
-On days with a move bigger than 1bp, the residual averages **~11%** of
-the actual move (median **~5%**) — small most of the time, but not
-negligible, and occasionally over a tenth of a percent of price on its
-own (the max, 12.3bp). This is consistent with, and not contradicted by,
+**About a third of the residual first reported here was a weighting
+error, not the three-factor model.** The percentage factor P&L came from
+a portfolio KRD averaged with raw weights, while the actual P&L is a
+market-value figure. With the KRD market-value weighted (2026-10-25,
+`docs/README.md`), the same 485 days give the left column. The old column
+is reproduced exactly by the old code, so the drop is the fix alone. On
+the zero basis (today's default) the residual is mean 1.05bp, median
+0.77bp, 95th percentile 2.80bp, max 8.21bp.
+
+On days with a move bigger than 1bp, the residual averages **~9%** of
+the actual move (median **~3%**; was ~11% / ~5%) — small most of the
+time, but not negligible, and up to about 5bp of price on its own (the
+max). This is consistent with, and not contradicted by,
 Phase 4B's own finding that the top 3 components explain **97.5%** of
 curve-change *variance*: a small share of unexplained variance still
 implies a real, visible day-to-day P&L residual, because (a) variance

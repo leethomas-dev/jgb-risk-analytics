@@ -34,8 +34,10 @@ no new sensitivity itself.
 **Output contract:** `dv01_bond(...) -> float`, currency per 100 face
 value. `dv01_by_tenor_bond(...) -> pd.Series`, same units, one value per
 tenor. `dv01_portfolio(...) -> pd.DataFrame`, one row per bond, columns
-`[name, maturity_years, coupon_rate, weight, price, modified_duration,
-dv01]`, no total row. `dv01_by_tenor_portfolio(...) -> pd.DataFrame`, one
+`[name, maturity_years, coupon_rate, weight, price, effective_duration,
+dv01]`, no total row. (The duration column was named `modified_duration`
+until 2026-10-25. It always held Phase 3A's curve-based effective
+duration, not the YTM-based modified duration of Phase 4.6B.) `dv01_by_tenor_portfolio(...) -> pd.DataFrame`, one
 row per bond plus a `portfolio_total` row, one column per tenor.
 
 ---
@@ -59,8 +61,10 @@ an actual position size on top of this — see §4.2.
 ### 1.2 `dv01_bond(...)`
 
 ```
-DV01 = Price * ModifiedDuration * bump_size
+DV01 = Price * EffectiveDuration * bump_size
 ```
+
+EffectiveDuration is Phase 3A's curve-based duration (`effective_duration_bond`).
 
 Two existing numbers multiplied together — nothing recomputed. `bump_size`
 does double duty: it's both the small numerical step the underlying

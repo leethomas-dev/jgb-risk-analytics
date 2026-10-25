@@ -172,16 +172,14 @@ def test_dollar_pnl_matches_independent_dv01_dot_shock_recomputation():
         assert e.dollar_pnl == pytest.approx(expected)
 
 
-def test_dollar_and_pct_pnl_agree_closely_since_bonds_price_near_par():
-    # Not expected to be bit-identical (see compute_portfolio_factor_exposure's
-    # docstring: KRD is weighted by portfolio weight, DV01 by each bond's
-    # own price) -- but the portfolio's bonds all price near par by
-    # construction, so the ABSOLUTE gap should be small (a relative check
-    # would be meaningless for PC3, whose P&L is itself near zero).
+def test_dollar_pnl_equals_pct_pnl_times_portfolio_value():
+    # The portfolio KRD is market-value weighted, so the percentage and
+    # currency figures describe the same book exactly (absolute check:
+    # a relative one would be meaningless for PC3, whose P&L is near zero).
     result = compute_portfolio_factor_exposure(_portfolio(), _curve(), _pca_result())
     for e in result.exposures:
         implied_dollar = e.pct_pnl * result.base_price
-        assert abs(e.dollar_pnl - implied_dollar) < 0.01  # < 1 cent per 100 face
+        assert e.dollar_pnl == pytest.approx(implied_dollar, abs=1e-12)
 
 
 def test_linear_estimate_matches_exact_reprice_within_a_tight_tolerance():

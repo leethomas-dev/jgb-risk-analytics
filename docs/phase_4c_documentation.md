@@ -108,9 +108,12 @@ tenors (1–10, 15, 20, 25, 30, 40Y). They differ in two cases:
 no 40Y point, so the 40Y bond's cash flows beyond 30Y take the 30Y yield
 (flat extrapolation). Bumping 30Y therefore moves them too: the 40Y
 bond's risk folds into the 30Y KRD instead of vanishing. Checked on the
-committed data: recomputed 30Y KRD **2.717** vs. native 30Y + 40Y
-**2.717**; total KRD **10.197** both ways
-(`test_risk_beyond_the_pca_grid_moves_to_its_last_tenor_rather_than_vanishing`).
+committed data (par basis): recomputed 30Y KRD **2.757** vs. native
+30Y + 40Y **2.757**; total KRD **10.146** both ways
+(`test_on_the_par_basis_40y_risk_folds_exactly_into_30y`). On today's
+zero basis the total is still kept but the risk spreads over the long
+end instead of landing exactly in 30Y — figures in
+[`special_phase_a_documentation.md`](special_phase_a_documentation.md) §5.
 Simply deleting the 40Y column would have lost that risk.
 
 On the default window the step changes nothing — the rebuilt curve is
@@ -150,9 +153,13 @@ portfolio via `price_portfolio`, and compare. On the project's default
 
 | Component | Linear estimate | Exact reprice | Gap (linear − exact) |
 | --- | --- | --- | --- |
-| PC1 | -0.2874% | -0.2847% | -0.0027 pp |
-| PC2 | -0.0570% | -0.0571% | +0.0001 pp |
-| PC3 | +0.0049% | +0.0040% | +0.0008 pp |
+| PC1 | -0.2855% | -0.2847% | -0.0008 pp |
+| PC2 | -0.0573% | -0.0571% | -0.0003 pp |
+| PC3 | +0.0040% | +0.0040% | -0.0000 pp |
+
+(Re-run 2026-10-25 after the portfolio-KRD weighting fix. Before it the
+PC1 gap read −0.0027 pp; about two-thirds of that was the raw-weight KRD
+total, not convexity.)
 
 All three gaps are a fraction of a basis point of price — the linear
 estimate is a good approximation *at these shock sizes* (component
@@ -172,16 +179,15 @@ a real position size, since this project's portfolio weights and coupons
 are already illustrative (Phase 2A), and inventing a position size on
 top would just add a second made-up number.
 
-The two figures are **independently computed**, not one derived from the
-other: `pct_pnl` comes from the KRD vector, which `key_rate_duration_portfolio`
-weights by portfolio weight alone; `dollar_pnl` comes from the DV01
-vector, which `dv01_by_tenor_portfolio` weights each bond's sensitivity
-by that bond's *own* price. Since every bond in this portfolio prices
-near par by construction (`config/portfolio.json`'s own disclaimer), the
-two stay close — checked directly, the gap between `dollar_pnl` and
-`pct_pnl × base_price` is under half a cent per 100 face on all three
-components — but they are not expected to be bit-identical, and the code
-doesn't force them to be.
+The two figures are computed separately — `pct_pnl` from the KRD vector,
+`dollar_pnl` from the DV01 vector — and agree exactly:
+`dollar_pnl = pct_pnl × base_price`
+(`test_dollar_pnl_equals_pct_pnl_times_portfolio_value`). That holds
+because `key_rate_duration_portfolio` averages KRDs by market value
+(weight × price), the standard portfolio-duration weighting. Until
+2026-10-25 it used the raw weights, and this section described the
+resulting small mismatch (under half a cent per 100 face) as expected. It
+was a weighting inconsistency, now fixed (`docs/README.md`).
 
 ### 1.4 The chart: a diverging, not categorical, color job
 
@@ -214,7 +220,7 @@ data (`prefer_live=False`):
 | --- | --- | --- | --- |
 | PC1 | 75.3% | -0.29% | -0.271 |
 | PC2 | 20.5% | -0.06% | -0.054 |
-| PC3 | 1.7% | +0.005% | +0.004 |
+| PC3 | 1.7% | +0.004% | +0.004 |
 
 **PC1 dominates**, by roughly 5x the next-largest component. This
 isn't only because PC1 explains the most curve-change variance — its

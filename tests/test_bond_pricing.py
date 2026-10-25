@@ -510,8 +510,25 @@ def test_accrued_accepts_the_same_date_strings_as_load_portfolio():
 
 
 def test_accrued_rejects_ambiguous_numeric_dates():
-    with pytest.raises(ValueError, match="unparseable date"):
+    with pytest.raises(ValueError, match="unparseable settlement_date"):
         accrued_interest(100.0, 0.02, 10.0, valuation_date="2026-08-31", settlement_date="03/04/2027")
+
+
+def test_dirty_price_at_valuation_equals_price_bond_even_for_a_sub_day_maturity():
+    # The only payment rounds onto the valuation date itself; with no
+    # settlement gap dirty_price must still be price_bond, not 0.
+    curve = load_jgb_curve(prefer_live=False)
+    dirty = dirty_price(100.0, 0.02, 0.001, curve, valuation_date=_VAL_DATE)
+    assert dirty == pytest.approx(price_bond(100.0, 0.02, 0.001, curve))
+
+
+def test_settlement_warning_points_at_the_callers_line():
+    curve = load_jgb_curve(prefer_live=False)
+    late = _VAL_DATE + timedelta(days=SETTLEMENT_WARNING_DAYS + 30)
+    for call in (dirty_price, clean_price):
+        with pytest.warns(UserWarning, match="forward price") as record:
+            call(100.0, 0.02, 10.0, curve, valuation_date=_VAL_DATE, settlement_date=late)
+        assert record[0].filename == __file__
 
 
 def test_accrued_rejects_settlement_after_maturity():

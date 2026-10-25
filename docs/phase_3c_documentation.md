@@ -107,19 +107,24 @@ real run, not only recoverable by inspecting the code's output object.
 A real run against the committed snapshot curve (MOF, 2026-08-31; `prefer_live=False`, so reproducible offline) and the default portfolio:
 
 ```
-Total portfolio KRD:   10.20 years,  of which ultra-long: 5.21 (51.1%)
+Total portfolio KRD:   10.15 years,  of which ultra-long: 5.20 (51.2%)
 Total portfolio DV01:  0.0963,       of which ultra-long: 0.0493 (51.2%)
 ```
 
 The portfolio's 20/30/40-year bonds hold **40%** of its *weight* but
 account for **51%** of its *risk*. This is a real, explainable effect,
 not a computation quirk: a bond's contribution to overall risk is its
-weight multiplied by its own duration, and duration itself grows with
+market value multiplied by its own duration, and duration itself grows with
 maturity — the 2-year bond's duration is about 2, the 40-year bond's is
 about 19, roughly ten times larger for a bond with twenty times the
 maturity. So putting equal *value* weight into a long bond and a short
 bond never leaves the two contributing equally to *risk* — the longer
 bond dominates. That's exactly what "40% weight, 51% risk" shows.
+
+The KRD and DV01 shares are identical because the portfolio KRD is
+market-value weighted, so it is the DV01 divided by portfolio value × 1bp.
+(Before the 2026-10-25 weighting fix the KRD line read 10.20 years and
+51.1%, slightly off the DV01 line; see `docs/README.md`.)
 
 ---
 

@@ -301,15 +301,18 @@ def test_bond_analytics_portfolio_price_matches_price_bond_per_row():
         assert price == pytest.approx(expected)
 
 
-def test_bond_analytics_portfolio_total_row_is_weight_weighted():
+def test_bond_analytics_portfolio_total_row_is_market_value_weighted():
     curve = load_jgb_curve(prefer_live=False)
     portfolio = load_portfolio()
     results = bond_analytics_portfolio(portfolio, curve)
     per_bond = results.iloc[:-1]
     weights = np.array([b.weight for b in portfolio])
+    mv = weights * per_bond["price"].to_numpy()
+    mv = mv / mv.sum()
 
-    expected_total_duration = float((per_bond["modified_duration"].to_numpy() * weights).sum())
-    assert results.loc["portfolio_total", "modified_duration"] == pytest.approx(expected_total_duration)
+    for col in ("ytm", "macaulay_duration", "modified_duration", "effective_duration", "convexity"):
+        expected = float((per_bond[col].to_numpy() * mv).sum())
+        assert results.loc["portfolio_total", col] == pytest.approx(expected)
 
     expected_total_price = float((per_bond["price"].to_numpy() * weights).sum())
     assert results.loc["portfolio_total", "price"] == pytest.approx(expected_total_price)

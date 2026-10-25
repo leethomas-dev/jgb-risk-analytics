@@ -195,9 +195,11 @@ rebuilds every tenor's KRD by hand — bump the par yield, call
 **Existing checks, still passing on the new default:**
 - Sum of KRDs vs. effective duration: gap ≤ 0.00003 years (40Y).
 - DV01 formula vs. a direct one-sided bump: ≤ 0.15%.
-- Phase 4C linear estimate vs. exact reprice: PC1 −0.3036% vs −0.2965%
-  (0.007pp), PC2 −0.1099% vs −0.1058% (0.004pp). Slightly larger than on
-  the par basis, still negligible at 1 std.
+- Phase 4C linear estimate vs. exact reprice: PC1 −0.2973% vs −0.2965%
+  (0.0008pp), PC2 −0.1060% vs −0.1058% (0.0002pp), as re-run 2026-10-25
+  with the market-value-weighted KRD total. (Originally reported as
+  0.007pp / 0.004pp; most of that was the raw-weight KRD total, not
+  convexity.) Negligible at 1 std.
 
 **New tests (12):**
 - basis guards: default is `"zero"`; unknown basis rejected; `"par"` on a
@@ -231,7 +233,7 @@ coupon equals its par yield has *all* its KRD at its own tenor.
 lifts zero rates up to it but slightly **lowers** them from the next
 quoted maturity onward (checked: +1bp at 15Y moves zero rates +1.3bp at
 15Y and −0.2bp from 20Y out). Bonds maturing beyond it gain, so that
-tenor's portfolio KRD can go negative — e.g. 15Y: −0.109. Real, and
+tenor's portfolio KRD can go negative — e.g. 15Y: −0.104. Real, and
 explained in the dashboard's KRD caption.
 
 **Ultra-long share: 51% → 68%.** A direct consequence of the two points
@@ -240,15 +242,22 @@ and 25Y interpolation neighbours. Phase 3C's "40% of weight, 51% of
 risk" becomes **40% of weight, 68% of risk**.
 
 **The "40Y folds into 30Y" identity is par-only.** On a PCA window
-without 40Y (Phase 4C §1.1), the total risk is still kept (10.666 →
-10.674), but dropping the 40Y par point also reshapes the bootstrapped
+without 40Y (Phase 4C §1.1), the total risk is still kept (10.478 both
+ways), but dropping the 40Y par point also reshapes the bootstrapped
 curve beyond 30Y, so the risk spreads over the long end rather than
-landing exactly in 30Y.
+landing exactly in 30Y. On the committed data: native 30Y + 40Y is
+2.816 + 2.131 = **4.948**, but the recomputed 30Y is **5.129**. The extra
+~0.18 comes out of the other tenors, mostly the long end — 25Y −0.069,
+20Y −0.048, 15Y −0.035, 10Y −0.013, under 0.004 each below that. (Par
+basis, for comparison: 1.770 + 0.987 = 2.757 = recomputed 30Y, every
+other tenor unchanged.)
 
 **Phase 4.6B's modified-vs-effective duration gap** no longer grows all
 the way to 40Y: it peaks for the 20Y bond (5.1%), whose cash flows span
 the curve's steepest stretch (10Y–20Y), where re-bootstrapping amplifies
-par shifts most.
+par shifts most. Its **sign also flips**: on the par basis modified
+duration sat above effective duration; on the zero basis it sits below,
+because a 1bp par shift moves long zero rates by more than 1bp.
 
 ---
 
@@ -264,7 +273,7 @@ commit**, `72e438e` — not part of this phase.
 | 1 — curve loader | None | None | — |
 | 2A — portfolio | None | None | — |
 | 2B — pricing | `bond_pricing.py`: `basis` argument on `discount_factors_at`, `price_bond`, `price_portfolio`; constants `PAR_BASIS` / `ZERO_BASIS` / `DEFAULT_BASIS = "zero"`; `zero_curve_for()` (cached bootstrap per curve and frequency); `"par"` on a `zero_rate` curve now raises | Prices discount on the bootstrapped zero curve; long bonds cheaper (portfolio 94.8836 → 93.0471). Old formula still available as `basis="par"` | §3, §6.1–6.2 |
-| 3A — KRD | `key_rate_duration.py`: `key_rate_duration_bond`, `effective_duration_bond`, `key_rate_duration_portfolio` forward `basis`; docstring note on the zero-basis bump | A bump now means bump par → re-bootstrap → reprice. Risk sits at maturity tenors; small negative KRDs between; Σ KRD still = effective duration. Portfolio duration 10.197 → 10.666 | §5, §6.3 |
+| 3A — KRD | `key_rate_duration.py`: `key_rate_duration_bond`, `effective_duration_bond`, `key_rate_duration_portfolio` forward `basis`; docstring note on the zero-basis bump | A bump now means bump par → re-bootstrap → reprice. Risk sits at maturity tenors; small negative KRDs between; Σ KRD still = effective duration. Portfolio duration 10.146 → 10.478 (market-value weighted, as re-run 2026-10-25) | §5, §6.3 |
 | 3B — DV01 | `dv01.py`: `dv01_bond`, `dv01_by_tenor_bond`, `dv01_portfolio`, `dv01_by_tenor_portfolio` forward `basis` | Portfolio DV01 0.096267 → 0.097494 | §6.1–6.2 |
 | 3C — ultra-long | `ultra_long_profile.py`: `compute_ultra_long_profile` forwards `basis` | 20Y+ share of risk 51% → 68% | §5, §6.1 |
 | 4A — history loader | None | None (loads curves, prices nothing) | — |
@@ -302,11 +311,11 @@ history 2024-09-02 to 2026-08-31), default portfolio, per 100 face.
 | Figure | Par (before) | Zero (after) | Change |
 | --- | --- | --- | --- |
 | Price | 94.8836 | 93.0471 | −1.9% |
-| Effective duration (Σ KRD) | 10.197 | 10.666 | +4.6% |
+| Effective duration (Σ KRD) | 10.146 | 10.478 | +3.3% |
 | DV01 | 0.096267 | 0.097494 | +1.3% |
-| Ultra-long (≥20Y) share of KRD | 51.1% | 68.8% | +17.7pp |
+| Ultra-long (≥20Y) share of KRD | 51.2% | 67.9% | +16.7pp |
 | Ultra-long (≥20Y) share of DV01 | 51.2% | 67.9% | +16.7pp |
-| Value-weighted YTM | 2.931% | 3.057% | +12.6bp |
+| Value-weighted YTM | 2.921% | 3.028% | +10.8bp |
 | Cash flow ladder: PV share ≥20Y | 19.0% | 17.8% | −1.2pp |
 
 ### 6.2 Per bond
@@ -322,32 +331,39 @@ history 2024-09-02 to 2026-08-31), default portfolio, per 100 face.
 
 ### 6.3 Portfolio KRD by tenor
 
+Market-value weighted (re-run 2026-10-25; `docs/README.md` change log).
+
 | Tenor | Par | Zero | Tenor | Par | Zero |
 | --- | --- | --- | --- | --- | --- |
-| 1Y | 0.027 | −0.007 | 9Y | 0.137 | −0.032 |
-| 2Y | 0.337 | 0.287 | 10Y | 2.360 | 2.337 |
-| 3Y | 0.064 | −0.014 | 15Y | 0.625 | −0.109 |
-| 4Y | 0.083 | −0.019 | **20Y** | 2.071 | **2.375** |
-| 5Y | 1.014 | 0.959 | **25Y** | 0.421 | **−0.080** |
-| 6Y | 0.102 | −0.021 | **30Y** | 1.771 | **2.933** |
-| 7Y | 0.115 | −0.024 | **40Y** | 0.946 | **2.108** |
-| 8Y | 0.126 | −0.028 | | | |
+| 1Y | 0.027 | −0.007 | 9Y | 0.135 | −0.031 |
+| 2Y | 0.348 | 0.305 | 10Y | 2.303 | 2.304 |
+| 3Y | 0.064 | −0.014 | 15Y | 0.622 | −0.104 |
+| 4Y | 0.083 | −0.019 | **20Y** | 2.013 | **2.247** |
+| 5Y | 1.029 | 0.996 | **25Y** | 0.427 | **−0.077** |
+| 6Y | 0.101 | −0.020 | **30Y** | 1.770 | **2.816** |
+| 7Y | 0.113 | −0.024 | **40Y** | 0.987 | **2.131** |
+| 8Y | 0.125 | −0.027 | | | |
 
 ### 6.4 Factor exposure (Phase 4C) and attribution (Phase 4D)
 
 | Figure | Par (before) | Zero (after) |
 | --- | --- | --- |
-| PC1 +1 std P&L | −0.287% / −0.2709 | −0.304% / −0.2766 |
-| PC2 +1 std P&L | −0.057% / −0.0544 | −0.110% / −0.0986 |
-| PC3 +1 std P&L | +0.005% / +0.0038 | −0.010% / −0.0099 |
+| PC1 +1 std P&L | −0.286% / −0.2709 | −0.297% / −0.2766 |
+| PC2 +1 std P&L | −0.057% / −0.0544 | −0.106% / −0.0986 |
+| PC3 +1 std P&L | +0.004% / +0.0038 | −0.011% / −0.0099 |
 | 4D, 2026-08-28 → 08-31: attributed PC1 / PC2 / PC3 | −0.1293 / +0.0261 / +0.0060 | −0.1320 / +0.0472 / −0.0155 |
 | 4D: actual P&L (full reprice) | −0.1111 | −0.1110 |
 | 4D: unexplained residual | −0.0138 | −0.0107 |
 
 On this date the attribution's residual shrinks by about a fifth on the
 zero basis, and the actual one-day P&L is almost identical on both
-(−0.1111 vs −0.1110). One day isn't evidence of a general improvement;
-Phase 6 should compare residuals across the full history.
+(−0.1111 vs −0.1110). One day isn't evidence of a general improvement,
+and **across the full history it goes the other way**: over all 485 days
+of the default window (run 2026-10-25, with market-value-weighted KRD),
+mean |residual| is 1.05bp of price on the zero basis vs 0.79bp on the par
+basis (median 0.77 vs 0.58bp, max 8.21 vs 5.25bp). The cause hasn't been
+investigated; the one-day improvement above should not be quoted as a
+general result. Phase 6 should explain the gap.
 
 ---
 

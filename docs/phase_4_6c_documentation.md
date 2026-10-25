@@ -115,10 +115,10 @@ same one-line formula here rather than importing `bond_pricing`'s private
 `_coupon_boundaries()` (which returns period *boundaries* for accrued-
 interest lookups, including the valuation-date anchor itself — a
 different shape than the plain per-cash-flow date list this module
-needs). This mirrors Phase 4.6A's own choice to write a small,
-self-contained `_resolve_date()` rather than import a private
-cross-module helper for three lines of logic — small, precedented
-duplication preferred over a private dependency.
+needs). A `valuation_date` string is parsed by
+`config.portfolio_loader.parse_date`, the same parser `bond_pricing`
+uses, so ISO, `YYYY/MM/DD` and Japanese era dates all work here too
+(ISO-only until 2026-10-25, while `bond_pricing` had already switched).
 
 **A genuinely clean aggregation, not a coincidence.** Every bond in the
 default portfolio resolves to the same `freq=2` (each bond's own

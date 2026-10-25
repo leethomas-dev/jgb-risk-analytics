@@ -169,16 +169,30 @@ def test_portfolio_krd_columns_match_curve_tenors():
     assert list(table.columns) == sorted(curve["maturity_years"].tolist())
 
 
-def test_portfolio_total_row_is_weight_weighted_sum_of_bond_rows():
+def test_portfolio_total_row_is_market_value_weighted_sum_of_bond_rows():
     curve = load_jgb_curve(prefer_live=False)
     portfolio = load_portfolio()
     table = key_rate_duration_portfolio(portfolio, curve)
 
+    values = np.array([b.weight * price_bond(b.face_value, b.coupon_rate, b.maturity_years, curve) for b in portfolio])
     expected_total = np.zeros(len(table.columns))
-    for bond in portfolio:
-        expected_total += bond.weight * table.loc[bond.name].to_numpy()
+    for bond, value in zip(portfolio, values):
+        expected_total += (value / values.sum()) * table.loc[bond.name].to_numpy()
 
     np.testing.assert_allclose(table.loc["portfolio_total"].to_numpy(), expected_total)
+
+
+def test_portfolio_krd_times_value_equals_portfolio_dv01_by_tenor():
+    # The point of market-value weighting: percentage and currency risk
+    # describe the same book (DV01_k = KRD_k x value x 1bp).
+    from models.dv01 import dv01_by_tenor_portfolio
+
+    curve = load_jgb_curve(prefer_live=False)
+    portfolio = load_portfolio()
+    krd_total = key_rate_duration_portfolio(portfolio, curve).loc["portfolio_total"]
+    dv01_total = dv01_by_tenor_portfolio(portfolio, curve).loc["portfolio_total"]
+    value = sum(b.weight * price_bond(b.face_value, b.coupon_rate, b.maturity_years, curve) for b in portfolio)
+    np.testing.assert_allclose(krd_total.to_numpy() * value * DEFAULT_BUMP_SIZE, dv01_total.to_numpy(), rtol=1e-10)
 
 
 def test_portfolio_krd_matches_single_bond_krd_per_row():

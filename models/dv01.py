@@ -6,8 +6,15 @@ move in yield -- the same sensitivity Key Rate Duration measures in
 percentage terms, rescaled into currency so it reads directly as a hedge
 size.
 
-    DV01           = Price * ModifiedDuration * 0.0001
-    DV01_k (tenor) = Price * KRD_k           * 0.0001
+    DV01           = Price * EffectiveDuration * 0.0001
+    DV01_k (tenor) = Price * KRD_k            * 0.0001
+
+EffectiveDuration is Phase 3A's curve-based duration (every par yield
+bumped together, re-bootstrapped, repriced). It is not the YTM-based
+modified duration of models/bond_analytics.py; the two differ at the long
+end (docs/phase_4_6b_documentation.md §2). The per-bond table's column
+was called "modified_duration" until 2026-10-25 and is now
+"effective_duration".
 
 Neither duration nor pricing is recomputed here -- this is a thin
 currency-unit conversion layer over bond_pricing.price_bond() and
@@ -49,7 +56,7 @@ def dv01_bond(
     bump_size: float = DEFAULT_BUMP_SIZE,
     basis: str | None = None,
 ) -> float:
-    """One bond's DV01: Price * ModifiedDuration * bump_size.
+    """One bond's DV01: Price * EffectiveDuration * bump_size.
 
     Two existing numbers multiplied together, nothing recomputed.
     bump_size does double duty: it's the numerical step
@@ -61,10 +68,10 @@ def dv01_bond(
     input.
     """
     price = price_bond(face_value, coupon_rate, maturity_years, curve, freq=freq, basis=basis)
-    modified_duration = effective_duration_bond(
+    duration = effective_duration_bond(
         face_value, coupon_rate, maturity_years, curve, freq=freq, bump_size=bump_size, basis=basis
     )
-    return price * modified_duration * bump_size
+    return price * duration * bump_size
 
 
 def dv01_by_tenor_bond(
@@ -128,7 +135,7 @@ def dv01_portfolio(
                 bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
                 freq=freq if freq is not None else bond.freq, basis=basis,
             ),
-            "modified_duration": effective_duration_bond(
+            "effective_duration": effective_duration_bond(
                 bond.face_value, bond.coupon_rate, bond.maturity_years, curve,
                 freq=freq if freq is not None else bond.freq, bump_size=bump_size, basis=basis,
             ),
@@ -141,7 +148,7 @@ def dv01_portfolio(
     ]
     return pd.DataFrame(
         rows,
-        columns=["name", "maturity_years", "coupon_rate", "weight", "price", "modified_duration", "dv01"],
+        columns=["name", "maturity_years", "coupon_rate", "weight", "price", "effective_duration", "dv01"],
     )
 
 
@@ -194,7 +201,7 @@ if __name__ == "__main__":
                 "coupon_rate": lambda c: f"{c:.3%}",
                 "weight": lambda w: f"{w:.2%}",
                 "price": lambda p: f"{p:.4f}",
-                "modified_duration": lambda d: f"{d:.4f}",
+                "effective_duration": lambda d: f"{d:.4f}",
                 "dv01": lambda d: f"{d:.6f}",
             },
         )
@@ -208,7 +215,7 @@ if __name__ == "__main__":
     print(dv01_table.to_string(float_format=lambda v: f"{v:8.6f}"))
 
     print()
-    print("Sanity check -- DV01 formula (Price * ModifiedDuration * bump_size) vs. a")
+    print("Sanity check -- DV01 formula (Price * EffectiveDuration * bump_size) vs. a")
     print("direct one-sided +1bp parallel bump-and-reprice:")
     for bond in portfolio:
         price = price_bond(bond.face_value, bond.coupon_rate, bond.maturity_years, curve)

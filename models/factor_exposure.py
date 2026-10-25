@@ -143,9 +143,9 @@ class FactorExposure:
         change (e.g. -0.0029 == -0.29%).
     dollar_pnl : Sigma_k -DV01_k * (shock_k / bump_size) -- the same P&L
         in currency per 100 face value, Phase 3B's own DV01 convention.
-        Computed independently from the DV01 vector, not derived as
-        pct_pnl * base_price -- see compute_portfolio_factor_exposure's
-        docstring for why the two aren't expected to match exactly.
+        Computed from the DV01 vector, not derived from pct_pnl; equals
+        pct_pnl * base_price (checked in tests), since the portfolio KRD
+        is market-value weighted.
     """
 
     component: int
@@ -229,17 +229,11 @@ def compute_portfolio_factor_exposure(
     -------
     PortfolioFactorExposureResult
 
-    Note on pct_pnl vs. dollar_pnl not agreeing exactly with
-    (pct_pnl * base_price): dv01_by_tenor_portfolio weights each bond's
-    DV01 by that bond's OWN price, while key_rate_duration_portfolio
-    weights each bond's KRD by portfolio weight alone (a percentage
-    doesn't carry a price to weight by). The two portfolio_total rows are
-    therefore each other's price-weighted-average version, not identical
-    up to a single scalar -- expect the two P&L figures to be close
-    (every bond here prices near par by construction, see
-    config/portfolio.json's own disclaimer) but not bit-identical. Both
-    are reported because both are real, independently-computed numbers,
-    not one derived from the other.
+    pct_pnl x base_price == dollar_pnl: the portfolio KRD row is
+    market-value weighted (bond_pricing.market_value_weights), so it is
+    the DV01 row divided by portfolio value x bump_size. Until 2026-10-25
+    the KRD row used raw weights and the two differed slightly; the old
+    docstring called that expected, but it was a weighting inconsistency.
     """
     pca_tenors = pca_result.tenors
     aligned_curve, extrapolated_tenors = _curve_aligned_to_pca_grid(curve, pca_tenors)

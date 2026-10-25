@@ -62,9 +62,10 @@ solves for the single flat rate that would have produced it. Nothing
 upstream in this project ever takes a YTM as an input — it is a
 description of a price, never a driver of one.
 
-**Solved against the clean price, not the dirty price** (Phase 4.6A's
-`price_bond()` output, not `dirty_price()`). The reasoning is mechanical,
-not a convenience: `price_bond`'s cash-flow schedule
+**Solved against `price_bond()`'s output — the PV of the remaining cash
+flows at the valuation date — not `dirty_price()`.** For the illustrative
+bonds that PV is clean and dirty at once (§6.1). The reasoning is
+mechanical, not a convenience: `price_bond`'s cash-flow schedule
 (`cash_flow_schedule`, promoted to a public function from Phase 4.6A's
 private `_cash_flow_schedule` specifically so this module could reuse it
 directly — the same "promote a private helper for a second module to
@@ -160,6 +161,12 @@ premise they're both measuring (a single flat rate) actually holds.
 | JGB_30Y | 18.0879 | 17.4325 | +0.655481 | +3.7601% |
 | JGB_40Y | 20.3760 | 19.4411 | +0.934924 | +4.8090% |
 
+*(Par basis, as built. On today's zero basis the gap changes shape and
+sign: modified duration sits **below** effective duration, peaking at
+−5.1% for the 20Y bond (2Y −0.13%, 10Y −2.4%, 30Y −4.4%, 40Y −2.5%),
+because a 1bp parallel par shift moves long zero rates by more than 1bp
+once re-bootstrapped. `special_phase_a_documentation.md` §5.)*
+
 **Reading this, not hiding it.** The gap is negligible at the short end
 and grows to a genuinely material **4.8% relative gap at 40 years** — the
 same recurring theme this project has already found twice before, at two
@@ -240,13 +247,15 @@ confirms the correction doesn't accidentally hurt at a small move either.
 ## 5. Portfolio-level reporting
 
 `bond_analytics_portfolio()` reports every measure above, per bond, plus
-a `portfolio_total` row — weighted the same way `key_rate_duration_portfolio`
-/ `dv01_by_tenor_portfolio` already weight their own total rows (each
-bond's config weight, `load_portfolio()`'s own guarantee that these sum
-to 1.0). `effective_duration` is included as a column directly alongside
+a `portfolio_total` row. Its price is Σ weight × price (each weight scales
+a bond's 100 face, as in `price_portfolio`); every other column is
+**market-value weighted** (weight × price, normalized), the standard
+portfolio duration/convexity definition and the same weighting as
+`key_rate_duration_portfolio`'s total. (Until 2026-10-25 the raw weights
+were used; see `docs/README.md`.) `effective_duration` is included as a column directly alongside
 `modified_duration`, specifically so §2's cross-check is visible in the
 table itself, not only in a separate test. The `portfolio_total` row's
-`ytm` is a value-weighted **average** of the bonds' own individual
+`ytm` is a market-value-weighted **average** of the bonds' own individual
 yields — a common market approximation for "the portfolio's yield," not
 a rigorously derived single discount rate for a multi-bond book (no such
 single rate generally exists once the bonds have different cash-flow
@@ -262,7 +271,12 @@ timing).
 | JGB_20Y | 91.2314 | 3.6199% | 14.9138 | 14.6487 | 14.3880 | 265.05 |
 | JGB_30Y | 94.1634 | 3.8289% | 18.4342 | 18.0879 | 17.4325 | 447.19 |
 | JGB_40Y | 98.9681 | 3.8508% | 20.7684 | 20.3760 | 19.4411 | 614.91 |
-| **portfolio_total** | 94.8836 | 2.9311% | 10.6100 | 10.4336 | 10.1970 | 196.56 |
+| **portfolio_total** | 94.8836 | 2.9209% | 10.5596 | 10.3840 | 10.1458 | 196.68 |
+
+(Total row re-run 2026-10-25 with market-value weights; per-bond rows are
+unchanged. With raw weights it read 2.9311% / 10.6100 / 10.4336 / 10.1970
+/ 196.56. On today's zero basis the total row is 93.0471 / 3.0284% /
+10.3146 / 10.1345 / 10.4779 / 187.96.)
 
 ---
 
@@ -284,7 +298,7 @@ no clean/dirty gap at valuation.
 
 **6.1a The dropped-coupon defect propagates into YTM (Phase 2B §3.4,
 Phase 4.6A §6.7).** For a real-dated bond whose next coupon is under
-~0.25 periods away, `price_bond` omits it, so YTM is solved against a
+half a period away (0.25 years for a semiannual bond), `price_bond` omits it, so YTM is solved against a
 price short by about a coupon, whichever clean/dirty basis is used.
 Dormant for the whole-year illustrative bonds; fix deferred to Phase 8.
 
@@ -309,7 +323,7 @@ it would already have been caught (or not) by Phase 2B's own tests for
 that function.
 
 **6.5 The portfolio-level YTM is an approximation, not a rigorous single
-rate for the book (§5).** A value-weighted average of individual yields
+rate for the book (§5).** A market-value-weighted average of individual yields
 is standard market shorthand, not a number with the same theoretical
 grounding as a single bond's own YTM.
 
@@ -319,10 +333,10 @@ grounding as a single bond's own YTM.
 
 **Solving YTM against the dirty price** (§6.1), if ever needed for
 closer alignment with market-data-terminal conventions, would need
-`price_bond`'s own cash-flow schedule rebuilt from an actual settlement
-date (a genuine fractional first period, not `dirty_price()`'s current
-additive accrued-interest layer) — a larger change than this phase's
-scope, not a parameter tweak.
+`price_bond`'s own cash-flow schedule rebuilt from real coupon dates and
+an actual settlement date (a genuine fractional first period; today's
+`dirty_price()` is a forward price on the same `t=0`-anchored schedule) —
+a larger change than this phase's scope, not a parameter tweak (Phase 8).
 
 **A closed-form (rather than central-difference) convexity
 implementation**, if this project ever added a second use for the closed
@@ -334,7 +348,7 @@ so switching would change no reported number materially.
 one flat rate that reprices the WHOLE portfolio's combined cash flows to
 its combined price — would be a new function alongside
 `bond_analytics_portfolio`, not a change to it; not built now since the
-value-weighted average is the standard, well-understood convention for
+market-value-weighted average is the standard, well-understood convention for
 this kind of report.
 
 ---

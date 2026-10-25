@@ -6,8 +6,8 @@ JGB curve -- the missing piece this project has carried as a named
 simplification since Phase 2B (docs/phase_2b_documentation.md §3.2):
 price_bond discounts every cash flow at the curve's own quoted rate for
 that cash flow's maturity, not a yield implied by a genuinely
-no-arbitrage zero curve. This module builds that zero curve. (Wiring it
-into price_bond as an optional discounting basis is Part C, not built here.)
+no-arbitrage zero curve. This module builds that zero curve. (Part C,
+Phase 4.5C, wired it into price_bond; Special Phase A made it the default.)
 
 WHAT THE INPUT CURVE ACTUALLY IS, VERIFIED AGAINST MOF'S OWN METHODOLOGY
 -- NOT A PAR CURVE. MOF's own published methodology (`outline-e.pdf`,
@@ -161,7 +161,7 @@ import numpy as np
 import pandas as pd
 
 from data.jgb_curve_loader import load_jgb_curve
-from models.bond_pricing import CURVE_COMPOUNDING_FREQ, curve_yield_at
+from models.bond_pricing import CURVE_COMPOUNDING_FREQ, cash_flows, curve_yield_at
 
 # Semiannual -- the MOF curve's own compounding convention. See module
 # docstring, design decision 3: a zero curve must be read at the same
@@ -295,10 +295,9 @@ def discount_factor_at(
 ):
     """Discount factor for an arbitrary maturity_years, computed from the
     INTERPOLATED zero rate (zero_rate_at) and freq-compounding -- not by
-    interpolating the discount_factor column directly. Keeps this
-    consistent with how a future zero-curve-based price_bond path (Part C)
-    would look up a rate for a cash flow that doesn't land exactly on the
-    zero curve's own grid: one interpolation rule (on the rate), not two.
+    interpolating the discount_factor column directly: one interpolation
+    rule (on the rate), the same one price_bond's zero basis uses for a
+    cash flow that doesn't land exactly on the zero curve's own grid.
     """
     z = zero_rate_at(zero_curve, maturity_years)
     t = np.asarray(maturity_years, dtype=float)
@@ -321,12 +320,9 @@ def price_via_zero_curve(
     exists as a named function rather than inlined so both share one
     implementation.
     """
-    n = max(1, round(maturity_years * freq))
-    times = maturity_years - (n - np.arange(1, n + 1)) / freq
-    cash_flows = np.full(n, face_value * coupon_rate / freq)
-    cash_flows[-1] += face_value
+    times, amounts = cash_flows(face_value, coupon_rate, maturity_years, freq)
     dfs = discount_factor_at(zero_curve, times, freq=freq)
-    return float(np.sum(cash_flows * dfs))
+    return float(np.sum(amounts * dfs))
 
 
 def implied_ytm(

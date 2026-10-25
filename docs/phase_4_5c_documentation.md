@@ -185,9 +185,13 @@ No figure below changes: every bond in the portfolio is semiannual.
 
 ```
 Price:     par = 94.884   zero = 93.047   diff = -1.837
-Duration:  par = 10.197   zero = 10.028   diff = -0.169 years
+Duration:  par = 10.146   zero = 9.858    diff = -0.288 years
 DV01:      par = 0.09627  zero = 0.09172  diff = -0.00455 (-4.72%)
 ```
+
+(Duration re-run 2026-10-25 with market-value weights; it was 10.197 /
+10.028 with raw weights. Price and DV01 are unchanged. Duration × price ×
+1bp now reproduces each DV01 line.)
 
 **The finding: small at the front end, dramatic at the long end.** The
 2Y bond's price moves half a basis point; the 30Y bond's moves over

@@ -124,7 +124,7 @@ case is "not converged within these bounds," not a silently-accepted
 boundary value. Every fit result's `converged` field records this
 directly, and docs/phase_4_5b_documentation.md reports whether it held
 on this project's real data (see also
-tests/test_curve_fitting.py::test_convergence_is_actually_checked_not_just_true_by_construction).
+tests/test_curve_fitting.py::test_convergence_flag_actually_triggers_on_a_hard_case).
 """
 
 from __future__ import annotations

@@ -179,7 +179,7 @@ def test_dv01_portfolio_columns():
     portfolio = load_portfolio()
     df = dv01_portfolio(portfolio, curve)
     assert list(df.columns) == [
-        "name", "maturity_years", "coupon_rate", "weight", "price", "modified_duration", "dv01",
+        "name", "maturity_years", "coupon_rate", "weight", "price", "effective_duration", "dv01",
     ]
 
 

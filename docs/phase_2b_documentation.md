@@ -164,9 +164,9 @@ out there is genuinely unknown from this data.
 **3.4 KNOWN DEFECT (dormant, fix deferred to Phase 8): a maturity that
 isn't a whole number of periods can drop the next coupon (added
 2026-10-18).** The schedule makes `round(maturity_years ×
-freq)` payments counted back from maturity, so the first lands 0.25–0.75
-periods out. A real-dated bond whose next coupon is closer than that loses
-it (2Y #470 valued 2026-08-10: the 2026-09-01 coupon is dropped, price
+freq)` payments counted back from maturity, so the first lands 0.5–1.5
+periods out (0.25–0.75 years for a semiannual bond). A real-dated bond
+whose next coupon is under half a period away loses it (2Y #470 valued 2026-08-10: the 2026-09-01 coupon is dropped, price
 short by about 0.40). The output is also a dirty price for such a bond,
 not a clean one. The illustrative portfolio uses whole years, so no figure
 is affected, but any real `maturity_date` triggers it, and every measure

@@ -55,12 +55,11 @@ reasoning and the measured Taylor-approximation improvement).
 
 from __future__ import annotations
 
-import numpy as np
 import pandas as pd
 
 from config.portfolio_loader import Bond, load_portfolio
 from data.jgb_curve_loader import load_jgb_curve
-from models.bond_pricing import PAR_BASIS, cash_flow_schedule, price_bond, price_portfolio
+from models.bond_pricing import PAR_BASIS, cash_flows, market_value_weights, price_bond
 from models.bootstrap import implied_ytm
 from models.key_rate_duration import DEFAULT_BUMP_SIZE, effective_duration_bond
 
@@ -92,8 +91,9 @@ def yield_to_maturity(
     freq: int = 2,
 ) -> float:
     """The single flat yield that reprices this bond's cash flows to
-    `price` -- this project's yield-to-maturity. Solved against the CLEAN
-    price (module docstring: "WHICH PRICE").
+    `price` -- this project's yield-to-maturity. Solved against
+    price_bond's PV at the valuation date (module docstring: "WHICH
+    PRICE").
 
     Root-solve via models.bootstrap.implied_ytm -- reused rather than a
     second, independent bisection implementation, since it already does
@@ -146,12 +146,8 @@ def macaulay_duration(
     average" collapses to that one cash flow's own time
     (test_zero_coupon_macaulay_duration_equals_maturity_exactly).
     """
-    n_periods, cash_flow_times = cash_flow_schedule(maturity_years, freq)
-    coupon_payment = face_value * coupon_rate / freq
-    cash_flows = np.full(n_periods, coupon_payment, dtype=float)
-    cash_flows[-1] += face_value
-
-    present_values = cash_flows / (1.0 + ytm / freq) ** (freq * cash_flow_times)
+    cash_flow_times, amounts = cash_flows(face_value, coupon_rate, maturity_years, freq)
+    present_values = amounts / (1.0 + ytm / freq) ** (freq * cash_flow_times)
     price = present_values.sum()
     return float((cash_flow_times * present_values).sum() / price)
 
@@ -216,29 +212,29 @@ def bond_analytics_portfolio(
     basis: str | None = None,
 ) -> pd.DataFrame:
     """Yield, duration, and convexity for every bond in `portfolio`,
-    against one `curve` -- plus a `portfolio_total` row, weighted the same
-    way as key_rate_duration_portfolio / dv01_by_tenor_portfolio (each
-    bond's own config weight, load_portfolio()'s own guarantee that these
-    sum to 1.0).
+    against one `curve` -- plus a `portfolio_total` row. Its price is
+    sum(weight x price), like price_portfolio; every other column is
+    MARKET-VALUE weighted (bond_pricing.market_value_weights), the same
+    as key_rate_duration_portfolio's total.
 
     freq : None (default) computes each bond's own analytics at its OWN
     bond.freq; an explicit int overrides every bond to that one shared
     frequency (see models.bond_pricing.price_portfolio's own docstring for
     why that override exists).
 
-    Columns: name, maturity_years, coupon_rate, weight, price (clean),
+    Columns: name, maturity_years, coupon_rate, weight, price (price_bond),
     ytm, macaulay_duration, modified_duration, effective_duration (the
     Phase 3A curve-based cross-check, computed alongside for direct
     comparison -- module docstring's "MACAULAY / MODIFIED DURATION..."),
     convexity.
 
-    The portfolio_total row's ytm is a value-weighted AVERAGE of the
-    bonds' own individual yields -- a common market approximation for "the
-    portfolio's yield", not a rigorously derived single discount rate for
-    the whole book (no such single rate generally exists for a multi-bond
-    portfolio). Duration and convexity total rows are the standard
-    value-weighted portfolio duration/convexity (the same linear
-    weighting price_portfolio/dv01_portfolio already use elsewhere).
+    The portfolio_total row's ytm is a market-value-weighted AVERAGE of
+    the bonds' own individual yields -- a common market approximation for
+    "the portfolio's yield", not a rigorously derived single discount rate
+    for the whole book (no such single rate generally exists for a
+    multi-bond portfolio). Duration and convexity total rows are the
+    standard market-value-weighted portfolio duration/convexity. Until
+    2026-10-25 these used the raw weights, which aren't value weights.
     """
     rows = []
     for bond in portfolio:
@@ -274,8 +270,9 @@ def bond_analytics_portfolio(
         ],
     )
     weights = df["weight"].to_numpy()
+    mv_weights = market_value_weights(weights, df["price"].to_numpy())
     numeric_cols = ["ytm", "macaulay_duration", "modified_duration", "effective_duration", "convexity"]
-    totals = {col: float((df[col].to_numpy() * weights).sum()) for col in numeric_cols}
+    totals = {col: float((df[col].to_numpy() * mv_weights).sum()) for col in numeric_cols}
     totals["price"] = float((df["price"].to_numpy() * weights).sum())
     df.loc["portfolio_total", list(totals)] = totals
     return df

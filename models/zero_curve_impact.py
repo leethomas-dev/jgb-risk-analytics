@@ -99,7 +99,7 @@ from config.portfolio_loader import Bond, load_portfolio
 from data.jgb_curve_history_loader import load_jgb_curve_history
 from data.jgb_curve_loader import load_jgb_curve
 from models.bootstrap import bootstrap_zero_curve, zero_rate_at
-from models.bond_pricing import CURVE_COMPOUNDING_FREQ, PAR_BASIS, price_bond
+from models.bond_pricing import CURVE_COMPOUNDING_FREQ, PAR_BASIS, market_value_weights, price_bond
 from models.curve_fitting import (
     NelsonSiegelFitResult,
     SvenssonFitResult,
@@ -179,13 +179,19 @@ class ParVsZeroImpactResult:
     def portfolio_price_zero(self) -> float:
         return self._weighted("zero_price")
 
+    def _value_weighted(self, column: str, price_column: str) -> float:
+        # Durations are percentages: average them by market value (weight x
+        # price), not raw weight -- bond_pricing.market_value_weights.
+        mv = market_value_weights(self.per_bond["weight"], self.per_bond[price_column])
+        return float((mv * self.per_bond[column].to_numpy()).sum())
+
     @property
     def portfolio_duration_par(self) -> float:
-        return self._weighted("par_duration")
+        return self._value_weighted("par_duration", "par_price")
 
     @property
     def portfolio_duration_zero(self) -> float:
-        return self._weighted("zero_duration")
+        return self._value_weighted("zero_duration", "zero_price")
 
     @property
     def portfolio_dv01_par(self) -> float:

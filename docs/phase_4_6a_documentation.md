@@ -183,7 +183,10 @@ this project's calendar, periods are 182 or 183 days and half-open (§5),
 so `days_elapsed` is at most 182: accrued tops out at 182/365 ≈ 0.4986 of
 the annual coupon, just under one period's coupon. (A real 184-day JGB
 period could reach 183/365, slightly over; this calendar has none.) That
-is the convention, not an error. This is the same formula `models/par_error_check.py` uses against real
+is the convention, not an error. This bound holds for whole-period
+maturities, i.e. every illustrative bond; a fractional maturity gives a
+first period of 0.5–1.5 periods (§6.7), and accrued in it can pass one
+coupon. This is the same formula `models/par_error_check.py` uses against real
 JSDA prices (Special Phase B).
 
 **Correction, 2026-10-11.** As first built, this phase followed the
@@ -431,8 +434,9 @@ coupon calendar.
 
 - **The next coupon can be dropped.** `cash_flow_schedule` makes
   `round(maturity_years × freq)` payments counted back from maturity, so
-  the first one always lands 0.25–0.75 periods out. A real bond whose next
-  coupon is closer loses it: 2Y #470 (0.8%, coupons 1 Mar / 1 Sep, matures
+  the first one always lands 0.5–1.5 periods out (0.25–0.75 years for a
+  semiannual bond). A real bond whose next coupon is under half a period
+  away loses it: 2Y #470 (0.8%, coupons 1 Mar / 1 Sep, matures
   2027-03-01) valued 2026-08-10 has 0.556 years left, gets one payment, and
   drops the 2026-09-01 coupon. Dirty comes out 99.57 against a correct
   99.97 (snapshot curve), short by the whole coupon.
