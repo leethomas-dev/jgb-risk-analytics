@@ -529,26 +529,45 @@ portfolio_dv01 = float((dv01_df["weight"] * dv01_df["dv01"]).sum())
 
 analytics_df = bond_analytics_portfolio(portfolio, curve)
 portfolio_mod_dur = float(analytics_df.loc["portfolio_total", "modified_duration"])
+portfolio_eff_dur = float(analytics_df.loc["portfolio_total", "effective_duration"])
 portfolio_convexity = float(analytics_df.loc["portfolio_total", "convexity"])
 
 ultra_long = compute_ultra_long_profile(portfolio, curve)
 
 # --- 1. Headline metrics -----------------------------------------------
 st.header("1. Headline risk metrics")
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric(
     "Portfolio DV01",
     f"{portfolio_dv01:.4f}",
     help="Currency per 100 face value, for a 0.01% (1bp) move in rates. Not a real position size -- the portfolio is illustrative.",
 )
-c2.metric("Modified duration", f"{portfolio_mod_dur:.2f} yrs")
-c3.metric("Convexity", f"{portfolio_convexity:.1f}")
-c4.metric(f"{ultra_long.threshold_years:.0f}Y+ DV01 share", f"{ultra_long.dv01_ultra_long_share:.1%}")
+# Effective duration is the headline: it comes from the same curve bumps as
+# DV01 and the KRD chart, so DV01 = effective duration x value x 1bp holds.
+c2.metric(
+    "Effective duration",
+    f"{portfolio_eff_dur:.2f} yrs",
+    help="Moves every quoted rate on the real curve together and reprices. The same calculation DV01 is built from.",
+)
+c3.metric(
+    "Modified duration",
+    f"{portfolio_mod_dur:.2f} yrs",
+    help="Textbook measure: each bond's sensitivity to its own single yield (YTM). Assumes a flat curve.",
+)
+c4.metric(
+    "Convexity (yield)",
+    f"{portfolio_convexity:.1f}",
+    help="Second-order partner to modified duration: measured on each bond's own yield, not the real curve.",
+)
+c5.metric(f"{ultra_long.threshold_years:.0f}Y+ DV01 share", f"{ultra_long.dv01_ultra_long_share:.1%}")
 st.caption(
     "DV01: how many currency units the portfolio gains or loses if every rate moves by 0.01%. "
-    "Duration: roughly the % price move for a 1% rate move. Convexity: a correction that matters more "
-    "for a bigger rate move. Last figure: how much of the portfolio's total interest-rate risk sits at the "
-    "20-year-and-longer points of the curve -- the 'ultra-long' segment that's a defining feature of the JGB market."
+    "Duration: roughly the % price move for a 1% rate move. Effective duration moves the real curve; "
+    f"modified duration assumes each bond has one flat yield, which on a sloped curve understates the risk "
+    f"(here by {1 - portfolio_mod_dur / portfolio_eff_dur:.1%}; per-bond gaps in section 3). Convexity: a "
+    "correction that matters more for a bigger rate move. Last figure: how much of the portfolio's total "
+    "interest-rate risk sits at the 20-year-and-longer points of the curve -- the 'ultra-long' segment that's "
+    "a defining feature of the JGB market."
 )
 
 # --- 2. Yield curve -------------------------------------------------------
@@ -616,15 +635,24 @@ st.caption(
 # --- 3. Portfolio table ----------------------------------------------------
 st.header("3. Portfolio holdings")
 dirty_df = dirty_price_portfolio(portfolio, curve)
-per_bond_analytics = analytics_df.loc[analytics_df.index != "portfolio_total", ["name", "ytm"]]
+per_bond_analytics = analytics_df.loc[analytics_df.index != "portfolio_total", ["name", "ytm", "modified_duration"]]
 table = dirty_df.merge(per_bond_analytics, on="name").merge(
     dv01_df[["name", "effective_duration", "dv01"]], on="name"
 )
+# Modified vs. effective side by side (Phase 4.6B §2's cross-check).
+table["duration_gap"] = table["modified_duration"] / table["effective_duration"] - 1.0
+table = table[
+    [
+        "name", "maturity_years", "coupon_rate", "weight", "clean_price", "accrued_interest", "dirty_price",
+        "ytm", "modified_duration", "effective_duration", "duration_gap", "dv01",
+    ]
+]
 table = table.rename(
     columns={
         "name": "Bond", "maturity_years": "Maturity (Y)", "coupon_rate": "Coupon",
         "weight": "Weight", "clean_price": "Clean price", "accrued_interest": "Accrued",
-        "dirty_price": "Dirty price", "ytm": "YTM", "effective_duration": "Effective duration", "dv01": "DV01",
+        "dirty_price": "Dirty price", "ytm": "YTM", "modified_duration": "Modified duration",
+        "effective_duration": "Effective duration", "duration_gap": "Mod vs eff", "dv01": "DV01",
     }
 )
 st.dataframe(
@@ -632,7 +660,8 @@ st.dataframe(
         {
             "Maturity (Y)": "{:.0f}", "Coupon": "{:.3%}", "Weight": "{:.2%}",
             "Clean price": "{:.4f}", "Accrued": "{:.5f}", "Dirty price": "{:.4f}",
-            "YTM": "{:.3%}", "Effective duration": "{:.4f}", "DV01": "{:.6f}",
+            "YTM": "{:.3%}", "Modified duration": "{:.4f}", "Effective duration": "{:.4f}",
+            "Mod vs eff": "{:+.2%}", "DV01": "{:.6f}",
         }
     ),
     hide_index=True,
@@ -642,8 +671,10 @@ st.caption(
     "Clean price is the quoted price; dirty price is what a buyer actually pays, including interest "
     "accrued since the last coupon. Accrued interest is shown as of today (no separate settlement date is "
     "set here), so it is zero and dirty price equals clean price. Effective duration is the "
-    "curve-based sensitivity DV01 is itself built from (every quoted rate moved together); the headline "
-    "modified duration above is a second, yield-based measure, which differs at the long end (see the docs for why)."
+    "curve-based sensitivity DV01 is itself built from (every quoted rate moved together); modified duration "
+    "uses each bond's own single yield instead. 'Mod vs eff' is the gap between them: small at the short end, "
+    "largest for bonds whose payments span the curve's steepest stretch, because one flat yield can't capture "
+    "the slope."
 )
 
 # --- 4. Key rate duration ---------------------------------------------------

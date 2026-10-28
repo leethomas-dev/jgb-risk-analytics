@@ -50,7 +50,8 @@ main-panel sections:
 1. **Headline metrics** — `models.dv01.dv01_portfolio` (DV01, aggregated
    the same way `dv01.py`'s own `__main__` does:
    `(df.weight * df.dv01).sum()`), `models.bond_analytics.bond_analytics_portfolio`
-   (`.loc["portfolio_total", "modified_duration"/"convexity"]`),
+   (`.loc["portfolio_total", "effective_duration"/"modified_duration"/"convexity"]`;
+   effective duration is the headline duration since 2026-10-26, see §9.4),
    `models.ultra_long_profile.compute_ultra_long_profile`
    (`.dv01_ultra_long_share`).
 2. **Yield curve** — `data.jgb_curve_loader.load_jgb_curve_with_source`
@@ -426,16 +427,22 @@ at which `accrued_interest()` is exactly `0.0` by construction
 in this dashboard for that reason, disclosed directly in the table's own
 caption.
 
-**9.4 The portfolio table's duration column is the curve-based
-(effective) duration, not the analytic (YTM-based) one.** It was labelled
-"Modified duration" until 2026-10-25, the same name as the YTM-based
-headline figure; it is now labelled "Effective duration".
-Chosen deliberately for internal consistency with the DV01 column shown
-next to it (`dv01_bond`'s own formula multiplies price by *that* duration
-measure, `docs/phase_3b_documentation.md`) — but `bond_analytics_portfolio`
-also computes a second, YTM-based modified duration that differs at the
-long end (up to ~5% for the 20Y bond on the zero basis) (`docs/phase_4_6b_documentation.md` §2); a reader wanting
-that figure instead needs to look past this table.
+**9.4 Effective duration is the headline; modified duration sits beside
+it.** Effective duration (bump the real curve, reprice) is what DV01 and
+the KRD chart are built from, so portfolio DV01 = effective duration ×
+value × 1bp holds exactly on the page. Modified duration (each bond's own
+flat YTM) is the textbook figure and the partner of the yield-based
+convexity tile, now labelled "Convexity (yield)". On the zero basis it
+sits below effective duration: −3.3% for the portfolio, up to −5.1% for
+the 20Y bond (snapshot curve; `docs/phase_4_6b_documentation.md` §2).
+
+History: until 2026-10-26 the headline showed only modified duration,
+next to a DV01 that implied effective duration, so the two didn't
+reconcile (10.13 vs. 10.48 on the snapshot curve). The portfolio table
+showed only effective duration, labelled "Modified duration" until
+2026-10-25. The table now shows both per bond plus their gap ("Mod vs
+eff"), so 4.6B's cross-check is visible on the dashboard, not only in
+the docs and tests.
 
 **9.5 The visual theme's CSS/JS selectors are Streamlit internals** (§6)
 — not a stable public API, and could silently stop matching in a future

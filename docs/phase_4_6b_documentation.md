@@ -254,7 +254,10 @@ portfolio duration/convexity definition and the same weighting as
 `key_rate_duration_portfolio`'s total. (Until 2026-10-25 the raw weights
 were used; see `docs/README.md`.) `effective_duration` is included as a column directly alongside
 `modified_duration`, specifically so §2's cross-check is visible in the
-table itself, not only in a separate test. The `portfolio_total` row's
+table itself, not only in a separate test. Since 2026-10-26 the
+dashboard shows the comparison too: effective duration as the headline
+with modified duration beside it, and both per bond with their gap in
+the holdings table (`docs/phase_4_7_documentation.md` §9.4). The `portfolio_total` row's
 `ytm` is a market-value-weighted **average** of the bonds' own individual
 yields — a common market approximation for "the portfolio's yield," not
 a rigorously derived single discount rate for a multi-bond book (no such
