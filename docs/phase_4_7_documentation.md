@@ -298,6 +298,15 @@ header or metric card. Disclosures stay visible: the illustrative-portfolio
 note, stale-data warnings, zero-curve discounting, zero accrued. Visible
 caption text went from about 800 words to about 170.
 
+The five headline cards' tooltips say what each number means for the
+holder in one or two short sentences, from the live figures: DV01 as
+the loss per 1bp per ¥100m face, effective duration as the % loss per 1%
+rise with a convexity caveat, modified duration as the screen figure and
+how far it understates risk, convexity as the large-move cushion at
+±100/200bp with the formula (½ × convexity × move²) so other move sizes
+can be worked out, and the 20Y+ share as how much of the P&L long-end
+rates drive (added 2026-10-28).
+
 ---
 
 ## 7. Deployment readiness (Part B)

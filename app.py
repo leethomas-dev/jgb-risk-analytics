@@ -539,42 +539,44 @@ st.header(
     help="DV01: value change for a 0.01% move in every rate. Duration: roughly the % price move for a 1% "
     "rate move. Convexity: the correction that matters for larger moves.",
 )
+duration_gap = portfolio_mod_dur / portfolio_eff_dur - 1
+
+# Tooltips say what each number means for the holder, using the live figures.
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric(
     "Portfolio DV01",
     f"{portfolio_dv01:.4f}",
-    help="Currency per 100 face value, for a 0.01% (1bp) move in rates. Not a real position size -- the portfolio is illustrative.",
+    help=f"Loss per 1bp rise in every rate: about ¥{portfolio_dv01 * 1e6:,.0f} per ¥100m face. Used to size hedges.",
 )
 # Effective duration is the headline: it comes from the same curve bumps as
 # DV01 and the KRD chart, so DV01 = effective duration x value x 1bp holds.
 c2.metric(
     "Effective duration",
     f"{portfolio_eff_dur:.2f} yrs",
-    help="Moves every quoted rate on the real curve together and reprices. The same calculation DV01 is built "
-    "from. Roughly the % price move for a 1% rate move.",
+    help=f"A 1% rise across the curve costs about {portfolio_eff_dur:.1f}% of value (slightly less, thanks to "
+    "convexity). The main rate-risk measure.",
 )
 c3.metric(
     "Modified duration",
     f"{portfolio_mod_dur:.2f} yrs",
-    help="Textbook measure: each bond's sensitivity to its own single yield (YTM). Assumes a flat curve.",
+    help=f"The figure bond screens quote. {abs(duration_gap):.1%} {'below' if duration_gap < 0 else 'above'} "
+    f"effective here, so screen figures {'understate' if duration_gap < 0 else 'overstate'} this portfolio's risk.",
 )
 c4.metric(
     "Convexity (yield)",
     f"{portfolio_convexity:.1f}",
-    help=(
-        "Second-order partner to modified duration: measured on each bond's own yield, not the real curve. "
-        f"It adds about +{0.5 * portfolio_convexity * 0.01**2:.1%} to the price change for a ±100bp yield move "
-        f"(+{0.5 * portfolio_convexity * 0.02**2:.1%} at ±200bp), on top of what modified duration predicts."
-    ),
+    help=f"Cushion for large moves: about {0.5 * portfolio_convexity * 0.01**2:.1%} better than duration at "
+    f"±100bp, {0.5 * portfolio_convexity * 0.02**2:.1%} at ±200bp (½ × convexity × move², move as a decimal). "
+    "Pairs with modified duration.",
 )
 c5.metric(
     f"{ultra_long.threshold_years:.0f}Y+ DV01 share",
     f"{ultra_long.dv01_ultra_long_share:.1%}",
-    help="Share of the portfolio's rate risk at the 20-year-and-longer points of the curve: the "
-    "'ultra-long' segment that defines the JGB market.",
+    help=f"{ultra_long.dv01_ultra_long_share:.0%} of rate risk sits in {ultra_long.threshold_years:.0f}Y+ rates, "
+    "so long-end moves drive most of the P&L.",
 )
 st.caption(
-    f"Modified duration is {portfolio_mod_dur / portfolio_eff_dur - 1:+.1%} vs. effective: one flat yield "
+    f"Modified duration is {duration_gap:+.1%} vs. effective: one flat yield "
     "per bond misses the curve's slope (per-bond gaps in section 3)."
 )
 
