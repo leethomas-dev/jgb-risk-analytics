@@ -705,9 +705,10 @@ st.caption(
 # --- 5. PCA factors ----------------------------------------------------
 st.header(
     "5. What moves the curve: PCA risk factors",
-    help="The lines show how each recurring pattern moves the curve, estimated from history. PC1 ('level') "
-    "moves all tenors one way; PC2 ('slope') moves short and long tenors apart; PC3 ('curvature') bends the "
-    "middle against both ends. Cards: P&L for a typical (+1 standard deviation) move in each pattern alone.",
+    help="The lines show how each recurring pattern moves the curve, estimated from history. PC1 ('level'): "
+    "this window's shape is in the caption below. PC2 ('slope') typically moves short and long tenors apart; "
+    "PC3 ('curvature') typically bends the middle against both ends. Cards: P&L for a typical "
+    "(+1 standard deviation) move in each pattern alone.",
 )
 st.caption(
     f"Estimated from {pca_result.n_observations} daily curve changes, "

@@ -234,7 +234,8 @@ lifts zero rates up to it but slightly **lowers** them from the next
 quoted maturity onward (checked: +1bp at 15Y moves zero rates +1.3bp at
 15Y and −0.2bp from 20Y out). Bonds maturing beyond it gain, so that
 tenor's portfolio KRD can go negative — e.g. 15Y: −0.104. Real, and
-explained in the dashboard's KRD caption.
+explained on the dashboard (section 4 header tooltip; a caption until
+2026-10-28).
 
 **Ultra-long share: 51% → 68%.** A direct consequence of the two points
 above — the 20Y/30Y/40Y bonds' risk is no longer partly assigned to 15Y
@@ -409,7 +410,7 @@ and the size of the small negative KRDs (§5) depend on that choice. A
 smoother interpolation would soften them without changing totals.
 
 **8.3 Negative KRDs are harder to read.** Correct, but counter-intuitive
-on a chart; the dashboard caption explains them.
+on a chart; the dashboard explains them (section 4 header tooltip).
 
 **8.4 Earlier phase docs keep their par-basis figures.** They were true
 when each phase was built. Each affected doc carries a note pointing
