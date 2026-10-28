@@ -449,9 +449,8 @@ portfolio, portfolio_error = load_edited_portfolio(st.session_state.weights)
 
 st.title("JGB Portfolio Risk Analytics")
 st.caption(
-    "Interest-rate risk analytics on an illustrative Japanese Government Bond "
-    "portfolio -- not a real fund's holdings. Six bonds (2Y-40Y); edit their "
-    "weights in the sidebar."
+    "Interest-rate risk for an illustrative six-bond JGB portfolio (2Y-40Y), not real holdings. "
+    "Edit weights in the sidebar."
 )
 
 if portfolio_error:
@@ -535,7 +534,11 @@ portfolio_convexity = float(analytics_df.loc["portfolio_total", "convexity"])
 ultra_long = compute_ultra_long_profile(portfolio, curve)
 
 # --- 1. Headline metrics -----------------------------------------------
-st.header("1. Headline risk metrics")
+st.header(
+    "1. Headline risk metrics",
+    help="DV01: value change for a 0.01% move in every rate. Duration: roughly the % price move for a 1% "
+    "rate move. Convexity: the correction that matters for larger moves.",
+)
 c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric(
     "Portfolio DV01",
@@ -547,7 +550,8 @@ c1.metric(
 c2.metric(
     "Effective duration",
     f"{portfolio_eff_dur:.2f} yrs",
-    help="Moves every quoted rate on the real curve together and reprices. The same calculation DV01 is built from.",
+    help="Moves every quoted rate on the real curve together and reprices. The same calculation DV01 is built "
+    "from. Roughly the % price move for a 1% rate move.",
 )
 c3.metric(
     "Modified duration",
@@ -563,19 +567,24 @@ c4.metric(
         f"(+{0.5 * portfolio_convexity * 0.02**2:.1%} at ±200bp), on top of what modified duration predicts."
     ),
 )
-c5.metric(f"{ultra_long.threshold_years:.0f}Y+ DV01 share", f"{ultra_long.dv01_ultra_long_share:.1%}")
+c5.metric(
+    f"{ultra_long.threshold_years:.0f}Y+ DV01 share",
+    f"{ultra_long.dv01_ultra_long_share:.1%}",
+    help="Share of the portfolio's rate risk at the 20-year-and-longer points of the curve: the "
+    "'ultra-long' segment that defines the JGB market.",
+)
 st.caption(
-    "DV01: how many currency units the portfolio gains or loses if every rate moves by 0.01%. "
-    "Duration: roughly the % price move for a 1% rate move. Effective duration moves the real curve; "
-    f"modified duration assumes each bond has one flat yield, which on a sloped curve understates the risk "
-    f"(here by {1 - portfolio_mod_dur / portfolio_eff_dur:.1%}; per-bond gaps in section 3). Convexity: a "
-    "correction that matters more for a bigger rate move. Last figure: how much of the portfolio's total "
-    "interest-rate risk sits at the 20-year-and-longer points of the curve -- the 'ultra-long' segment that's "
-    "a defining feature of the JGB market."
+    f"Modified duration is {portfolio_mod_dur / portfolio_eff_dur - 1:+.1%} vs. effective: one flat yield "
+    "per bond misses the curve's slope (per-bond gaps in section 3)."
 )
 
 # --- 2. Yield curve -------------------------------------------------------
-st.header("2. The yield curve: quoted, bootstrapped, and fitted")
+st.header(
+    "2. The yield curve: quoted, bootstrapped, and fitted",
+    help="Par curve: the rates MOF publishes. Zero curve: the same market with the coupon-timing distortion "
+    "removed (bootstrapped). Fit: a smooth model of the zero curve, whichever of Nelson-Siegel and Svensson "
+    "fits this curve better.",
+)
 tier_note = (
     " (a fixed past date -- see the project's fallback re-anchoring policy)"
     if curve_source.source_tier == "snapshot"
@@ -628,16 +637,15 @@ fig_curve.update_layout(
     margin=dict(t=10),
 )
 st.plotly_chart(_style_fig(fig_curve), width="stretch")
-st.caption(
-    "Three views of the same market: the rates the government actually publishes (par curve), a more "
-    "theoretically precise version stripped of a coupon-timing distortion (bootstrapped zero curve), and "
-    "a smooth mathematical description of that zero curve's shape, picked between two candidate models by "
-    "whichever actually fits this curve better. Every price and risk figure on this page discounts on the "
-    "zero curve."
-)
+st.caption("Every price and risk figure on this page discounts on the zero curve.")
 
 # --- 3. Portfolio table ----------------------------------------------------
-st.header("3. Portfolio holdings")
+st.header(
+    "3. Portfolio holdings",
+    help="Clean price is the quoted price; dirty price adds interest accrued since the last coupon. Effective "
+    "duration moves the real curve (what DV01 is built from); modified duration uses each bond's own single "
+    "yield. 'Mod vs eff' is the gap between them.",
+)
 dirty_df = dirty_price_portfolio(portfolio, curve)
 per_bond_analytics = analytics_df.loc[analytics_df.index != "portfolio_total", ["name", "ytm", "modified_duration"]]
 table = dirty_df.merge(per_bond_analytics, on="name").merge(
@@ -672,17 +680,17 @@ st.dataframe(
     width="stretch",
 )
 st.caption(
-    "Clean price is the quoted price; dirty price is what a buyer actually pays, including interest "
-    "accrued since the last coupon. Accrued interest is shown as of today (no separate settlement date is "
-    "set here), so it is zero and dirty price equals clean price. Effective duration is the "
-    "curve-based sensitivity DV01 is itself built from (every quoted rate moved together); modified duration "
-    "uses each bond's own single yield instead. 'Mod vs eff' is the gap between them: small at the short end, "
-    "largest for bonds whose payments span the curve's steepest stretch, because one flat yield can't capture "
-    "the slope."
+    "Accrued is zero: prices are as of today with no separate settlement date, so dirty = clean. "
+    "'Mod vs eff' is largest for bonds spanning the curve's steepest stretch."
 )
 
 # --- 4. Key rate duration ---------------------------------------------------
-st.header("4. Key rate duration: where the portfolio's rate sensitivity sits")
+st.header(
+    "4. Key rate duration: where the portfolio's rate sensitivity sits",
+    help="Each bar: the portfolio's value change if only that one quoted rate moved by 1%, others fixed. "
+    "Small negative bars between maturities are real: raising one quoted rate while its neighbours stay put "
+    "slightly lowers the discount rates from the next quoted maturity onward.",
+)
 krd_tenors = ultra_long.tenors
 krd_values = ultra_long.krd_by_tenor.to_numpy()
 krd_colors = [ULTRA_LONG_COLOR if t >= ultra_long.threshold_years else NORMAL_COLOR for t in krd_tenors]
@@ -690,15 +698,17 @@ fig_krd = go.Figure(go.Bar(x=[f"{t:g}Y" for t in krd_tenors], y=krd_values, mark
 fig_krd.update_layout(xaxis_title="Tenor", yaxis_title="Portfolio KRD (years)", margin=dict(t=10))
 st.plotly_chart(_style_fig(fig_krd), width="stretch")
 st.caption(
-    f"Each bar shows how much the portfolio's value would move if only that one quoted rate moved by 1%, "
-    f"holding every other quoted rate fixed. Risk lands on the tenors where the bonds actually mature; the "
-    f"small negative bars in between are real, not errors -- raising one quoted rate while its neighbours "
-    f"stay put slightly lowers the discount rates from the next quoted maturity onward. Red bars "
-    f"({ultra_long.threshold_years:.0f}Y and beyond) are the 'ultra-long' segment."
+    f"{ultra_long.krd_ultra_long_share:.0%} of rate sensitivity sits at {ultra_long.threshold_years:.0f}Y+ "
+    "(red, the ultra-long segment)."
 )
 
 # --- 5. PCA factors ----------------------------------------------------
-st.header("5. What moves the curve: PCA risk factors")
+st.header(
+    "5. What moves the curve: PCA risk factors",
+    help="The lines show how each recurring pattern moves the curve, estimated from history. PC1 ('level') "
+    "moves all tenors one way; PC2 ('slope') moves short and long tenors apart; PC3 ('curvature') bends the "
+    "middle against both ends. Cards: P&L for a typical (+1 standard deviation) move in each pattern alone.",
+)
 st.caption(
     f"Estimated from {pca_result.n_observations} daily curve changes, "
     f"{pca_result.window_start} to {pca_result.window_end}."
@@ -734,15 +744,16 @@ fig_pca.update_layout(
 )
 st.plotly_chart(_style_fig(fig_pca), width="stretch")
 st.caption(
-    "These lines show HOW each recurring pattern moves the curve, estimated from real history. PC1 "
-    f"('level'), in this window: {level_shape}. PC2 typically moves short and "
-    "long tenors in opposite directions (the curve steepens or flattens); PC3 typically bends the middle "
-    "of the curve against both ends. The cards above show what a typical-sized move in each pattern would "
-    "do to this portfolio's value, in currency (main figure) and percent (small figure below it)."
+    f"The {len(exposure.exposures)} factors explain "
+    f"{sum(e.explained_variance_ratio for e in exposure.exposures):.0%} of daily curve moves. "
+    f"PC1 in this window: {level_shape}."
 )
 
 # --- 6. Cash flow ladder -----------------------------------------------
-st.header("6. Cash flow ladder: when the money actually arrives")
+st.header(
+    "6. Cash flow ladder: when the money actually arrives",
+    help="Every scheduled coupon and principal payment, grouped by year. The tall spikes are redemptions.",
+)
 ladder_result = compute_cash_flow_ladder(portfolio, curve)
 ladder = ladder_result.ladder.copy()
 ladder["year"] = pd.to_datetime(ladder["date"]).dt.year
@@ -759,11 +770,8 @@ fig_ladder.update_layout(
 )
 st.plotly_chart(_style_fig(fig_ladder), width="stretch")
 st.caption(
-    f"Every coupon and principal payment this portfolio is scheduled to receive, grouped by year. The tall "
-    f"spikes are each bond's redemption. {ladder_result.ultra_long_nominal_share:.0%} of the raw future "
-    f"cash lands 20+ years out, but once discounted back to today's money that share drops to "
-    f"{ladder_result.ultra_long_pv_share:.0%} -- a distant payment is worth much less today than its face "
-    "amount."
+    f"{ladder_result.ultra_long_nominal_share:.0%} of future cash lands 20+ years out, but only "
+    f"{ladder_result.ultra_long_pv_share:.0%} of its present value."
 )
 
 # --- 7. PC scores and factor P&L attribution --------------------------
@@ -773,7 +781,11 @@ st.caption(
 # must reflect an edit immediately (same caching split principle as every
 # other portfolio-dependent call in this file -- see the module docstring
 # and docs/phase_4_7_documentation.md's "caching strategy").
-st.header("7. Daily factor scores and P&L attribution")
+st.header(
+    "7. Daily factor scores and P&L attribution",
+    help="Each line: how far that day's curve move lined up with one pattern, in basis points (not a "
+    "standard-deviation count). A spike on the level line means that day looked like a PC1 move.",
+)
 score_result = _cached_pc_scores(history)
 
 fig_scores = go.Figure()
@@ -791,18 +803,15 @@ fig_scores.update_layout(
     legend=dict(orientation="h", yanchor="bottom", y=1.02), margin=dict(t=10),
 )
 st.plotly_chart(_style_fig(fig_scores), width="stretch")
-st.caption(
-    "Each line shows how far that single day's curve move lined up with one recurring pattern, in basis "
-    "points -- NOT a standard-deviation count. A tall spike on the level line means that day's move looked "
-    f"a lot like PC1's pattern ({level_shape}); a tall spike on the slope line means it looked more "
-    "like 'short and long rates moved apart'."
+st.subheader(
+    "Most recent factor P&L attribution",
+    help="Level, slope and curvature are a simplified three-pattern description of the curve move; the "
+    "residual is what they don't explain, not a mistake.",
 )
-
-st.subheader("Most recent factor P&L attribution")
 attribution = compute_factor_pnl_attribution(portfolio, history, pca_result, score_result, score_result.scores.index[-1])
 st.caption(
-    f"Change from **{attribution.previous_date}** to **{attribution.as_of_date}** -- the most recent "
-    "day-over-day move available in the loaded curve history, not necessarily today."
+    f"**{attribution.previous_date}** to **{attribution.as_of_date}**: the latest move in the loaded "
+    "history, not necessarily today."
 )
 
 attrib_cols = st.columns(pca_result.n_components + 1)
@@ -822,9 +831,7 @@ attrib_cols[-1].metric(
 )
 st.caption(
     f"Actual portfolio P&L that day, from a full reprice: **{attribution.actual_dollar_pnl:+.4f}** per 100 "
-    f"face (**{attribution.actual_pct_pnl:+.3%}**). Level, slope, and curvature are a simplified, three-"
-    "pattern description of a real curve move that has many more moving parts -- the residual is whatever "
-    "those three patterns alone don't explain, not a mistake."
+    f"face (**{attribution.actual_pct_pnl:+.3%}**)."
 )
 
 # ---------------------------------------------------------------------------

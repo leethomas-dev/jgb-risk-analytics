@@ -289,6 +289,15 @@ degrades to "less styled," never a crash: the CSS rules simply stop
 matching (no error possible from an unmatched CSS selector), and both JS
 blocks wrap their logic in `try`/`catch`.
 
+**On-page text: findings visible, definitions in tooltips (2026-10-28).**
+The audience is investors and asset managers, who know what KRD or DV01
+is. Each section's caption is now one line stating what the number shows
+right now (e.g. "68% of rate sensitivity sits at 20Y+"), built from live
+figures. What each measure means moved to the "?" tooltip on the section
+header or metric card. Disclosures stay visible: the illustrative-portfolio
+note, stale-data warnings, zero-curve discounting, zero accrued. Visible
+caption text went from about 800 words to about 170.
+
 ---
 
 ## 7. Deployment readiness (Part B)
