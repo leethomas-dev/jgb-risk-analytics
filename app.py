@@ -557,7 +557,11 @@ c3.metric(
 c4.metric(
     "Convexity (yield)",
     f"{portfolio_convexity:.1f}",
-    help="Second-order partner to modified duration: measured on each bond's own yield, not the real curve.",
+    help=(
+        "Second-order partner to modified duration: measured on each bond's own yield, not the real curve. "
+        f"It adds about +{0.5 * portfolio_convexity * 0.01**2:.1%} to the price change for a ±100bp yield move "
+        f"(+{0.5 * portfolio_convexity * 0.02**2:.1%} at ±200bp), on top of what modified duration predicts."
+    ),
 )
 c5.metric(f"{ultra_long.threshold_years:.0f}Y+ DV01 share", f"{ultra_long.dv01_ultra_long_share:.1%}")
 st.caption(

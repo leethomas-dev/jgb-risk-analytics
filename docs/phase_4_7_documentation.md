@@ -444,6 +444,15 @@ showed only effective duration, labelled "Modified duration" until
 eff"), so 4.6B's cross-check is visible on the dashboard, not only in
 the docs and tests.
 
+The convexity tile's tooltip converts the number into a price effect:
+½ × convexity × Δy², about +0.9% at ±100bp and +3.8% at ±200bp
+(snapshot curve), worked out from the live figure. No table of
+large-move P&L is shown, on purpose: every P&L view on the page (the
+PCA cards, the daily attribution) is a move of a few basis points, where
+convexity is about 0.002% and lands in the attribution residual. Large
+moves belong in Phase 5's scenarios, priced by full revaluation on the
+real curve rather than by this approximation.
+
 **9.5 The visual theme's CSS/JS selectors are Streamlit internals** (§6)
 — not a stable public API, and could silently stop matching in a future
 Streamlit release. Degrades to "less styled," never a crash, by design —
