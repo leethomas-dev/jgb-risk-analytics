@@ -243,7 +243,8 @@ re-bootstrap the zero curve, and reprice on the zero basis.
 | **Par basis vs. C** | **−1.3%** | **+3.0%** |
 
 ("Inverted" = the snapshot's yields reversed across tenors; recorded
-2026-11-02, when re-running with it reproduced all six figures.)
+2026-11-02. `python -m validation.special_phase_a_before_after`
+regenerates all six figures.)
 
 Against the right benchmark (C), the par simplification's risk error is
 **smaller** than −4.72% suggested, and on today's upward-sloping curve it

@@ -84,7 +84,7 @@ the par curve, re-bootstrap, reprice on the zero basis. Against it:
 
 "Inverted" is the snapshot's yields reversed across tenors (1Y gets the
 40Y yield, and so on). This construction wasn't recorded at the time;
-re-running all six figures with it on 2026-11-02 reproduced them exactly.
+since 2026-11-02 the validation script regenerates all six figures (§12).
 
 So the error was smaller than thought, but pointed the other way —
 **understating** on today's curve — and its sign depends on curve shape.
@@ -513,7 +513,8 @@ rate-limited during the research.
 - **Not part of this phase:** `git show 72e438e` — the Phase 1 snapshot
   refresh the day before, which moved the committed curve to MOF's
   15-tenor 2026-08-31 curve. Every number in this doc is on that snapshot.
-- **The §6 figures and §7 monitor:** `python -m validation.special_phase_a_before_after`
+- **The §1 DV01 benchmark (both curves), §2 par-bond prices, §6 figures
+  and §7 monitor:** `python -m validation.special_phase_a_before_after`
   from the repo root. It prices everything on both bases from the committed
   data, so the output is identical on any machine.
 - **Par-basis figures for any single phase:** call its function with
