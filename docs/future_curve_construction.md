@@ -365,6 +365,60 @@ Phase B learned is noted against each.
   included bonds — e.g. mean gap under 2bp, with no pattern by coupon —
   against today's mean 6.5bp, median 2.0bp, maximum 35.5bp.
 
+### 9.3 Decision (2026-11-02): what the fitted curve is for, and when
+
+**Before any trigger fires (§11): a benchmark only.** A curve fitted to
+JSDA prices (Steeley B-splines, §9.2 B) is run offline as a validation
+artifact. Run it once, commit the derived numbers, and keep the raw file
+in the gitignored `data/jsda/`, as Special Phase B did. It measures how far
+MOF + bootstrap is from real prices without touching any documented
+figure, and the deployed app doesn't depend on a rate-limited download
+or on JSDA's terms, which are still unverified.
+
+**When a trigger fires: the fitted curve becomes the pricing source.**
+Writing the error down is enough when it's small next to what the model
+is used for: the current portfolio's −2 to +5bp (§4) qualifies. A
+deep-discount holding mispriced by up to ~3 points per 100 doesn't.
+
+**How the risk chain survives.** Read par yields off the fitted
+discount function at the curve's tenors, and feed them into the existing
+chain: bump par → re-bootstrap → reprice (Special Phase A). Nothing in
+the bump or sensitivity code changes; only the source of the par curve
+does.
+
+**The consequence, stated as a deliberate choice: pricing and factors
+would sit on different bases.** Prices would use the fitted curve's
+levels. The PCA factors would still be estimated on MOF's par-yield
+changes, because refitting across the whole history is blocked by JSDA's
+rate limits (§9.1). That's a hard constraint, not a preference. Why it's
+acceptable:
+
+- **It fixes the larger error without making the factor error worse.**
+  The factor-side error exists today, with or without the switch: PC2's
+  +1 std P&L moves 7.9% when the history is coupon-corrected (§4, against
+  a 10% limit, with a known omission that would likely push it higher).
+  The switch removes a pricing error of up to ~3 points
+  per 100 and leaves that factor error where it is.
+- **It adds one new effect that hasn't been measured yet:** MOF-estimated
+  factor shapes applied to a curve built from different data. Measure it
+  when the switch is built. It's not assumed to be small.
+- **The monitor** is `compare_factor_results()` (§11), with its
+  `MATERIAL_*` limits. Not `compare_factor_exposure_bases()`, which
+  compares par vs. zero discounting, a different question. Check whether
+  it needs adapting to compare against a fitted curve instead of the
+  coupon-corrected history.
+- **What would change it:** a bond-level price history becoming
+  available (JSDA licence or API, §11 trigger 5), which would let the
+  factors move onto the same basis.
+
+**Order and gating.** This sits in Phase 8B, after Phase 8A (calendar,
+coupon schedule, accrued interest, real portfolio). A fit to real prices
+needs exact cash-flow dates and correct accrued interest, so 8A has to
+come first. 8B runs only if a §11 trigger actually fires once real
+holdings are loaded: measure it, don't predict it. §9.2 E's fallback
+(MOF + bootstrap with its measured error) stays for days or holdings
+where the fitted curve isn't available.
+
 ---
 
 ## 10. Related known issue: the Diebold-Li vs. PCA basis mismatch
