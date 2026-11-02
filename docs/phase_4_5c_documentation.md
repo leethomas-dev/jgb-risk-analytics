@@ -242,6 +242,9 @@ re-bootstrap the zero curve, and reprice on the zero basis.
 | C. Zero basis, par shift + re-bootstrap | 0.09749 | 0.13870 |
 | **Par basis vs. C** | **−1.3%** | **+3.0%** |
 
+("Inverted" = the snapshot's yields reversed across tenors; recorded
+2026-11-02, when re-running with it reproduced all six figures.)
+
 Against the right benchmark (C), the par simplification's risk error is
 **smaller** than −4.72% suggested, and on today's upward-sloping curve it
 **understates** risk (per bond: 2Y −0.1%, 5Y −0.6%, 10Y −1.9%,

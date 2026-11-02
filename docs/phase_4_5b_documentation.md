@@ -418,6 +418,20 @@ project's 150/60 grid gives `tau1 = 2.941`, `tau2 = 19.447`, RMSE
 because many nearby pairs fit almost equally well. Another reason to read
 the curve, not the individual betas.
 
+**8.6 Outside evidence against these models for JGB curves (added
+2026-11-02).** Kikuchi and Shintani (2012, Bank of Japan IMES) compared
+eight methods for fitting JGB zero curves to bond prices (1999–2010)
+and rejected Nelson-Siegel and Svensson: one function shapes the whole
+curve, so they produced negative or abnormal short-end zero yields when
+the front end was flat near zero. They chose Steeley (1991) B-splines.
+The setting here is different: these fits run on the bootstrapped zero
+curve, not on bond prices, and rates are positive, so their short-end
+failure doesn't carry over directly. The same weakness shows up here at
+the other end: Svensson missed 40Y by ~99bp with 40Y held out (Special
+Phase B §2). The fits remain display and comparison tools; nothing
+prices off them (`docs/future_curve_construction.md` §9.2 B has the
+method choice for a price-based fit).
+
 ---
 
 ## 9. What would change this design

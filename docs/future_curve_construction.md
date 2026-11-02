@@ -39,7 +39,10 @@ push the number up.
 picks real benchmark JGBs near each grid year — each class's newest
 issue, plus the issues maturing nearest the grid year on each side —
 takes their market yields to maturity, and draws a cubic spline through
-them. No step prices anything at 100.
+them. No step prices anything at 100. Kikuchi and Shintani (2012, Bank of
+Japan IMES, footnote 2) say the same: MOF's rates "are the yields to
+maturity of fixed-interest government bonds on a semiannual compounded
+basis, not the zero yield."
 
 **What the project does with it.** Phase 4.5A treats those yields as par
 yields and bootstraps a zero curve from them. Since Special Phase A,
@@ -327,6 +330,21 @@ Phase B learned is noted against each.
   Svensson extrapolates badly (missed 40Y by ~99bp with 40Y held out), so
   the long end needs care. The project has no scipy by design; a
   price-based fit needs an iterative solver.
+  **Preferred candidate (added 2026-11-02): Steeley (1991) B-splines.**
+  Kikuchi and Shintani (2012, Bank of Japan IMES) fitted eight methods to
+  JGB prices (2Y–30Y, 1999–2010), scoring them on four criteria: no
+  negative zero yields, no abnormal values, fit to prices, and little
+  unevenness. Steeley won. Nelson-Siegel and Svensson were rejected
+  because one function bends the whole curve, which gave negative or
+  abnormal short-end zero yields in the zero-rate years. Smoothing
+  splines (Waggoner's family) fit prices worse; the authors say whether
+  to use them "should depend on how the estimated curve will be used".
+  Their own caveat: other periods "might lead to different conclusions",
+  and their data stops at 30Y. Practical bonus here: Steeley models the
+  discount function as a weighted sum of B-splines, so a bond's price is
+  linear in the weights and the fit is ordinary least squares in numpy,
+  with no iterative solver. Source:
+  imes.boj.or.jp/research/papers/english/me30-5.pdf.
 - **C. Which bonds to use.** Exclude very short, illiquid, and BoJ- or
   futures-distorted issues; choose average vs. median quotes. Clean/dirty
   pricing, Actual/365 accrued interest and T+1 settlement already work

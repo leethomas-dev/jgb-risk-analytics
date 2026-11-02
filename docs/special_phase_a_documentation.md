@@ -30,10 +30,10 @@ figure.
 **What changed.** `models/bond_pricing.py` gains a `basis` setting on
 `discount_factors_at` / `price_bond` / `price_portfolio` / `dirty_price` /
 `dirty_price_portfolio`: `"zero"` (new default) or `"par"`. On the zero
-basis a par curve (`yield` column) is bootstrapped at the bond's own
-coupon frequency (`models.bootstrap.bootstrap_zero_curve`, cached by
-curve and frequency) and each cash flow is discounted off that zero
-curve. Every sensitivity module already worked by "bump the par curve,
+basis a par curve (`yield` column) is bootstrapped once at its own
+semiannual convention (`models.bootstrap.bootstrap_zero_curve`, cached
+per curve; §3.3) and each cash flow is discounted off that zero curve,
+whatever the bond's coupon frequency. Every sensitivity module already worked by "bump the par curve,
 reprice", so they now measure **bump par → re-bootstrap → reprice** with
 no logic change — they only forward `basis`:
 `key_rate_duration.py`, `dv01.py`, `ultra_long_profile.py`,
@@ -82,6 +82,10 @@ the par curve, re-bootstrap, reprice on the zero basis. Against it:
 | C. Zero basis, par shift + re-bootstrap | 0.09749 | 0.13870 |
 | **A vs. C** | **−1.3% (understates)** | **+3.0% (overstates)** |
 
+"Inverted" is the snapshot's yields reversed across tenors (1Y gets the
+40Y yield, and so on). This construction wasn't recorded at the time;
+re-running all six figures with it on 2026-11-02 reproduced them exactly.
+
 So the error was smaller than thought, but pointed the other way —
 **understating** on today's curve — and its sign depends on curve shape.
 Two supporting arguments for deferring also fell away: "conservative"
@@ -113,6 +117,33 @@ moving — not enough on its own against a fix that costs milliseconds.
 ---
 
 ## 2. The mechanism: why par pricing misses slope risk
+
+**First, why zero discounting is the right method (added 2026-11-02).**
+A price is the sum of each payment times the discount factor for that
+payment's date, so each payment needs the rate for a single payment at
+that date: the zero rate. A par yield is a different thing: the one
+coupon at which a whole T-year coupon bond prices at 100, a blend of
+the zero rates for every coupon date up to T. Discounting a single
+payment at a par yield uses a blended rate where a single-payment rate
+belongs. On an upward curve long zero rates sit above par yields, so the
+par basis under-discounts long payments and overprices long bonds.
+
+The test that shows it: a bond paying exactly the par yield must price
+at 100, by the definition of a par yield. On the committed snapshot:
+
+| Par-coupon bond | Par yield | Zero rate | Price, par basis | Price, zero basis |
+| --- | --- | --- | --- | --- |
+| 10Y | 2.943% | 3.021% | 100.62 | 100.00 |
+| 20Y | 3.815% | 4.104% | 103.26 | 100.00 |
+| 30Y | 4.092% | 4.456% | 105.07 | 100.00 |
+
+The par basis can't reprice the instruments its own curve is made of.
+The bootstrap builds the zero curve so that every par point reprices to
+exactly 100, so the zero basis is consistent with its input by
+construction. ("Correct" here still means correct given that MOF's
+yields are par yields; §8.1.) The rest of this section is about why the
+same inconsistency matters far more for slope risk than for parallel
+risk.
 
 When par yields steepen, bootstrapped zero rates steepen **more**. PC2's
 +1 std move raises the 30Y par yield by **2.08bp**; the 30Y zero rate
@@ -273,13 +304,13 @@ commit**, `72e438e` — not part of this phase.
 | --- | --- | --- | --- |
 | 1 — curve loader | None | None | — |
 | 2A — portfolio | None | None | — |
-| 2B — pricing | `bond_pricing.py`: `basis` argument on `discount_factors_at`, `price_bond`, `price_portfolio`; constants `PAR_BASIS` / `ZERO_BASIS` / `DEFAULT_BASIS = "zero"`; `zero_curve_for()` (cached bootstrap per curve and frequency); `"par"` on a `zero_rate` curve now raises | Prices discount on the bootstrapped zero curve; long bonds cheaper (portfolio 94.8836 → 93.0471). Old formula still available as `basis="par"` | §3, §6.1–6.2 |
+| 2B — pricing | `bond_pricing.py`: `basis` argument on `discount_factors_at`, `price_bond`, `price_portfolio`; constants `PAR_BASIS` / `ZERO_BASIS` / `DEFAULT_BASIS = "zero"`; `zero_curve_for()` (cached bootstrap per curve; per curve and frequency until the 2026-10-12 correction, §3.3); `"par"` on a `zero_rate` curve now raises | Prices discount on the bootstrapped zero curve; long bonds cheaper (portfolio 94.8836 → 93.0471). Old formula still available as `basis="par"` | §3, §6.1–6.2 |
 | 3A — KRD | `key_rate_duration.py`: `key_rate_duration_bond`, `effective_duration_bond`, `key_rate_duration_portfolio` forward `basis`; docstring note on the zero-basis bump | A bump now means bump par → re-bootstrap → reprice. Risk sits at maturity tenors; small negative KRDs between; Σ KRD still = effective duration. Portfolio duration 10.146 → 10.478 (market-value weighted, as re-run 2026-10-25) | §5, §6.3 |
 | 3B — DV01 | `dv01.py`: `dv01_bond`, `dv01_by_tenor_bond`, `dv01_portfolio`, `dv01_by_tenor_portfolio` forward `basis` | Portfolio DV01 0.096267 → 0.097494 | §6.1–6.2 |
 | 3C — ultra-long | `ultra_long_profile.py`: `compute_ultra_long_profile` forwards `basis` | 20Y+ share of risk 51% → 68% | §5, §6.1 |
 | 4A — history loader | None | None (loads curves, prices nothing) | — |
 | 4B — PCA | None | None | — |
-| 4C — factor exposure | `factor_exposure.py`: `compute_portfolio_factor_exposure` forwards `basis`; **new** `compare_factor_exposure_bases()` | PC2 exposure nearly doubles, PC3 flips sign; "40Y folds exactly into 30Y" now par-only; linear-vs-exact gap ≤ 0.007pp. Alignment logic unchanged | §1, §5, §6.4, §7 |
+| 4C — factor exposure | `factor_exposure.py`: `compute_portfolio_factor_exposure` forwards `basis`; **new** `compare_factor_exposure_bases()` | PC2 exposure nearly doubles, PC3 flips sign; "40Y folds exactly into 30Y" now par-only; linear-vs-exact gap ≤ 0.0008pp (re-run 2026-10-25; originally reported as ≤ 0.007pp, mostly a weighting effect, §4). Alignment logic unchanged | §1, §5, §6.4, §7 |
 | 4D — attribution | `factor_pnl_attribution.py`: `compute_factor_pnl_attribution` forwards `basis` to exposures and both reprices | Attributed P&L and residual change (one-day residual −0.0138 → −0.0107) | §6.4 |
 | 4E — history top-up | None | None | — |
 | 4.5A — bootstrap | `bootstrap.py`: `implied_ytm` pinned to `basis="par"` (a flat-yield definition) | None — `bootstrap_zero_curve` is unchanged and is now the engine behind the default | §3.1 |
@@ -416,9 +447,11 @@ on a chart; the dashboard explains them (section 4 header tooltip).
 when each phase was built. Each affected doc carries a note pointing
 here; §6 is the single place with current values.
 
-**8.5 The linear factor estimate drifts slightly further from exact
-repricing** (PC1: 0.007pp vs 0.003pp) — still negligible at 1 std;
-Phase 5's large stress moves should reprice fully.
+**8.5 The linear factor estimate is an approximation** (PC1: 0.0008pp
+from exact repricing, PC2: 0.0002pp, as re-run 2026-10-25; §4). The
+originally reported 0.007pp (vs 0.003pp on the par basis) was mostly
+the raw-weight KRD total, not convexity. Negligible at 1 std; Phase 5's
+large stress moves should reprice fully.
 
 ---
 
