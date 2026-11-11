@@ -48,13 +48,22 @@ basis, not the zero yield."
 yields and bootstraps a zero curve from them. Since Special Phase A,
 every price and risk figure discounts on that zero curve.
 
-**Why no curve model can fix this from MOF's data alone.** A bond's
+**Why no curve model can fix this from MOF's curve alone.** A bond's
 yield depends on its coupon: on a rising curve, a low-coupon bond yields
-more than a par bond of the same maturity. MOF publishes one yield per
-grid year and no coupons. Every method that starts from MOF's numbers —
-bootstrap, Nelson-Siegel, Svensson, Diebold-Li, a spline — has to assume
-something about the missing coupons. Par is the usual assumption. Only
-bond-level data removes the need for one.
+more than a par bond of the same maturity. MOF's curve data gives one
+yield per grid year, with no coupon and no list of the bonds behind it.
+Each issue's coupon is public — MOF's historical auction results list
+it per issue ("Nominal Coupon",
+[Auction Results for JGBs](https://www.mof.go.jp/english/policy/jgbs/auction/past_auction_results/index.html);
+they agree with the coupons used in Special Phase B §4, e.g. 0.7% on
+every 30Y issue maturing around 25Y out, #69–73) — but which issues
+fed each grid year on each day is not; only the selection rule is. So
+every method that starts from MOF's curve — bootstrap, Nelson-Siegel,
+Svensson, Diebold-Li, a spline — has to assume a coupon for each point.
+Par is the usual assumption. Inferring the issues from the selection
+rule and using their coupons gets closer (Special Phase B §4 does this,
+as a test input), but still guesses which issues were used. Only
+bond-level prices remove the guess.
 
 ---
 
