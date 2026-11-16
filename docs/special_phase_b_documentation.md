@@ -25,9 +25,10 @@ simplification actually matters. What it did:
    with coupons under 1%, while their neighbours come from new near-par
    ones — putting 25Y about 32bp and 15Y about 16bp above where par
    bonds would sit. The 25Y "peak" that 4.5B's models failed to fit is
-   mostly this artifact. Bonds priced near 100 are priced correctly
-   (under 1bp); **bonds like the project's own portfolio are off by only
-   −2 to +5bp, mostly under 2bp.**
+   mostly this artifact. For bonds priced near 100 the par assumption
+   adds under 1bp (their total gaps reach 2.4bp, the rest being how far
+   each bond sits from MOF's curve); **bonds like the project's own
+   portfolio are off by only −2 to +5bp, mostly under 2bp.**
 4. **The par error reaches the factors, not mainly the prices.**
    Correcting the curve history moves the slope factor's P&L by 7.9%
    against a 10% limit, with a known gap in the test that pushes the
@@ -210,21 +211,47 @@ cancel.
   `market.jsda.or.jp/shijyo/saiken/baibai/baisanchi/files/<YYYY>/S<YYMMDD>.csv`.
   Each row has the issue, maturity, coupon, coupon months, average
   price, and compound and simple yields.
+- **What the quotes are** (JSDA,
+  [制度について](https://market.jsda.or.jp/shijyo/saiken/baibai/kehai2/seido.html)):
+  the mid of bid and offer at 3pm, for a trade of about ¥500m face,
+  reported by designated dealers mostly as simple yields. JSDA
+  publishes four values per bond (average, median, high, low); the
+  average is an arithmetic mean after dropping a set share of the
+  highest and lowest quotes.
 - **Not committed.** JSDA's terms forbid reuse or copying without
   permission ([jsda.or.jp/menseki](https://www.jsda.or.jp/menseki/)). The
   file is downloaded by hand into `data/jsda/` (gitignored); only derived
   results are recorded here.
-- **Dated the next business day — confirmed.** `S260901.csv` sits 0.2bp
-  from MOF's 08-31 curve on average; `S260831.csv` sits 1.0bp from 08-31
-  but 0.4bp from 08-28. So `S260901` holds the 08-31 quotes.
+- **Dated the next business day — confirmed two ways.** JSDA says so:
+  the figures are based on the day's 3pm quotes and published under the
+  next day's date (same page). The data agrees: for the ~35 bonds MOF's
+  selection rule picks (§3.4), JSDA's compound yield (column 6) is
+  compared with MOF's curve at each bond's maturity. Mean absolute gap:
+
+  | File | vs MOF 08-28 | vs MOF 08-31 |
+  | --- | --- | --- |
+  | `S260831.csv` | **0.43bp** | 1.41bp |
+  | `S260901.csv` | 1.37bp | **0.41bp** |
+
+  So `S260901` holds the 08-31 quotes (08-31 was a Monday; `S260831`
+  holds Friday 08-28's). All 294 bonds give the same answer less sharply
+  (`S260901`: median 0.95bp vs 08-31, 1.88bp vs 08-28). Figures recomputed
+  2026-11-16; the earlier 0.2 / 1.0 / 0.4bp mixed different statistics
+  and didn't say which bonds were used.
 - **Column meanings checked, not assumed.** Recomputing simple yield from
   price and coupon matches JSDA's column to 0.09bp (median). This code's
   compound yield matches JSDA's to 0.19bp (median, 0.36bp at the 95th
   percentile), so the price-to-yield conventions agree.
-- **Prices, not simple yields, are used.** JSDA's headline figure for
-  ordinary JGBs is the simple yield, but the file also carries the
-  average price; the check works from the price directly.
-- **Settlement:** T+1 (2026-09-01); accrued interest on Actual/365.
+- **Prices, not JSDA's yields, are used.** The simple yield ignores
+  compounding, so it isn't comparable with MOF's curve (a 0.5%-coupon
+  20Y issue priced 67: 4.19% simple vs 3.44% compound). The check
+  converts both JSDA's average price and the model price to yields with
+  the same function, so convention differences cancel; JSDA's own
+  compound yield (column 6) would leave a ~0.2bp convention gap in.
+- **Settlement:** T+1 (2026-09-01), the domestic JGB standard; accrued
+  interest on Actual/365. The data doesn't pin the settlement date down:
+  this code's compound yield matches JSDA's to 0.22 / 0.19 / 0.18bp
+  (median) at T+0 / T+1 / T+2.
 
 ### 3.3 Result
 
@@ -244,9 +271,11 @@ almost all of the gap is the coupon effect.
 
 **The coupon drives it.** Within every maturity bucket, the coupon effect
 tracks how far the coupon sits below the yield (correlation −0.79 to
-−0.97; −0.93 or stronger beyond 10Y). The 66 bonds priced 98–102 are all
-within 0.55bp. The 111 bonds priced below 85 have a median gap of
-+13.8bp. A positive gap means the zero curve makes the bond yield too
+−0.97; −0.93 or stronger beyond 10Y). For the 66 bonds priced 98–102
+the coupon effect is within 0.55bp everywhere; their total gap,
+including how far each sits off MOF's curve, is within 2.4bp (median
+0.8bp). The 111 bonds priced below 85 have a median coupon effect of
++13.8bp (median total gap +12.4bp). A positive gap means the zero curve makes the bond yield too
 much — prices it too cheaply.
 
 ### 3.4 The bonds MOF's curve is built from
@@ -278,8 +307,11 @@ about half the size.
 
 - **The project's own portfolio is barely affected.** Its bonds (2–40Y,
   coupons 1.0–3.8%) sit near par and mature at grid years built from new
-  issues. Real JGBs with similar coupons and maturities show gaps of
-  −2.0 to +4.7bp, most under 2bp.
+  issues. Real JGBs within 1 year of maturity and 0.5 points of coupon
+  of one of the portfolio's bonds (49 of them) show total gaps of −2.4
+  to +4.7bp, 80% under 2bp. (Recomputed 2026-11-16 with that filter
+  stated; the earlier −2.0 to +4.7bp didn't record its filter. Wider
+  filters give up to +5.0bp and 81–86% under 2bp.)
 - **The zero curve's shape is wrong around 15Y and 25Y.** For a deep-
   discount bond, most of the value is the final payment, so a ~3-point
   price gap on a 25Y bond priced ~47 means the zero rate there is roughly
@@ -332,7 +364,8 @@ the corrected history and compared with the originals.
 
 **Is the correction realistic?** On 2026-08-31 it lowers 15Y by 13bp and
 25Y by 22bp, and the corrected curve prices the 294 real JGBs from §3
-better: mean gap 6.5 → 3.5bp, median 2.0 → 1.2bp. It's a partial fix:
+better: mean absolute gap 6.5 → 3.5bp, median absolute gap 2.0 →
+1.2bp. It's a partial fix:
 bonds maturing in 30–40Y price slightly worse (mean +19.9 → +24.3bp), and
 the largest single gap grows (35.5 → 42.3bp). Good enough as a test
 input of the right size and shape. It isn't a replacement curve.

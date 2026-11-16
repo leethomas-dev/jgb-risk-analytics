@@ -134,10 +134,11 @@ zero curve for 2026-08-31 and compared with JSDA's quotes:
 
 - **MOF's curve fits the bonds closely** (median 0.85bp from each bond's
   own yield), so the pricing gap is almost entirely the coupon effect.
-- **Near-par bonds are priced correctly:** all 66 bonds priced 98–102
-  are within 0.55bp.
+- **Near-par bonds are priced well:** for all 66 bonds priced 98–102
+  the coupon effect is within 0.55bp; their total gap, including how far
+  each sits off MOF's curve, is within 2.4bp.
 - **Low-coupon bonds are not:** the 111 bonds priced below 85 have a
-  median gap of +13.8bp. By maturity bucket the average gap is under
+  median coupon effect of +13.8bp. By maturity bucket the average gap is under
   2bp to 10Y, +8 to +11bp at 10–20Y, and +16 to +25bp beyond 20Y, up to
   +33bp; up to ~3 points of price per 100.
 - **The coupon drives it:** within every maturity bucket the gap tracks
@@ -162,7 +163,8 @@ correction).
 
 Real JGBs with coupons and maturities like the portfolio's six bonds
 (2–40Y, coupons 1.0–3.8%) show these gaps against the project's zero
-curve. The portfolio's bonds sit near par and mature at grid years MOF
+curve: the 49 within 1 year of maturity and 0.5 points of coupon of one
+of the six show −2.4 to +4.7bp, 80% under 2bp (Special Phase B §3.5). The portfolio's bonds sit near par and mature at grid years MOF
 builds from new issues, so the artifacts at 15Y and 25Y barely touch
 them.
 
@@ -319,7 +321,7 @@ JSDA publishes daily reference prices for every JGB (公社債店頭売買参考
 | URL pattern `.../baisanchi/files/<YYYY>/S<YYMMDD>.csv` | **Checked** — S260831 and S260901 downloaded |
 | Coupons included | **Checked** — with maturity, coupon months, average price, compound and simple yields |
 | Column meanings | **Checked** — simple yield recomputed from price matches JSDA's to 0.09bp; this code's compound yield matches JSDA's to 0.19bp (medians) |
-| Dated the next business day | **Checked** — S260901 matches MOF's 08-31 curve (0.2bp average); S260831 matches 08-28 (0.4bp) |
+| Dated the next business day | **Checked** — JSDA states it (3pm quotes, published under the next day's date: [制度について](https://market.jsda.or.jp/shijyo/saiken/baibai/kehai2/seido.html)); the data agrees: on the bonds MOF selects, S260901 sits 0.41bp from MOF's 08-31 curve (1.37bp from 08-28), S260831 0.43bp from 08-28 (Special Phase B §3.2) |
 | Headline quotes are simple yield, not price | **Not a problem** — the file also carries the average price; work from that |
 | Archives back to 2002 | Yearly archive pages, checked by the project owner; not re-checked in Special Phase B |
 | Rate limits | **Checked** — HTTP 429 on the format PDF, header file, index and terms pages within minutes. One file a day is fine; a multi-year daily history is impractical. |

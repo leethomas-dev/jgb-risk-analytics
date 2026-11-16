@@ -13,9 +13,12 @@ hand into data/jsda/ (gitignored):
     https://market.jsda.or.jp/shijyo/saiken/baibai/baisanchi/files/<YYYY>/S<YYMMDD>.csv
 
 DATED THE NEXT BUSINESS DAY. A file holds the PREVIOUS business day's 3pm
-quotes: S260901.csv matches MOF's 2026-08-31 curve. Checked against MOF:
-S260901 sits 0.2bp from MOF 08-31 on average, S260831 sits 1.0bp away
-(but 0.4bp from MOF 08-28). See docs/special_phase_b_documentation.md §3.
+quotes (mid of bid and offer), as JSDA states
+(https://market.jsda.or.jp/shijyo/saiken/baibai/kehai2/seido.html):
+S260901.csv matches MOF's 2026-08-31 curve. Checked against MOF on the
+bonds MOF selects (mean absolute gap, column 6): S260901 0.41bp from
+08-31 vs 1.37bp from 08-28; S260831 0.43bp from 08-28 vs 1.41bp from
+08-31. See docs/special_phase_b_documentation.md §3.2.
 
 COLUMNS USED (0-based, Shift-JIS file, no header row): 0 file date,
 1 category ("02" = JGBs), 2 issue code, 3 issue name, 4 maturity
