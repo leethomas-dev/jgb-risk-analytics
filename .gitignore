@@ -243,3 +243,6 @@ data/._jgb_recent_cache_*.tmp
 # Project-specific: JSDA reference-price files, downloaded by hand. JSDA's terms
 # forbid redistribution, so these are never committed (data/jsda_reference_loader.py).
 data/jsda/
+
+# macOS Finder metadata
+.DS_Store
